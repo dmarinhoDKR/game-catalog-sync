@@ -4,6 +4,16 @@ Projeto pessoal de aprendizado e portfólio de um backend para catálogo de jogo
 
 [English](README.md)
 
+## Evidências
+
+### Testes de integração HTTP
+
+Seis testes HTTP passaram, cobrindo os endpoints de saúde e as respostas
+200, 400 e 404 do catálogo. Os cenários de banco usam PostgreSQL isolado.
+Lint concluído sem avisos ou erros.
+
+![Seis testes HTTP passando e lint sem erros](docs/images/http-tests.png)
+
 ## Estado atual
 
 Implementado e verificado localmente:
@@ -17,13 +27,13 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Um teste unitário e três testes HTTP com Vitest; readiness usa
-  PostgreSQL real em banco isolado.
+- Um teste unitário e seis testes HTTP com Vitest, incluindo respostas
+  200, 400 e 404 do catálogo e readiness com PostgreSQL real
+  em banco isolado.
 - Build e lint verificados.
 
 Paginação, autenticação, avaliações, Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
-Testes HTTP automatizados do catálogo ainda estão pendentes.
 
 ## Ambiente local
 
@@ -127,8 +137,7 @@ Na consulta de jogos, somente Prisma P1001 é convertido em HTTP 503.
 
 A preparação dos bancos é manual. O setup a partir de um clone novo
 ainda não foi completamente documentado ou verificado.
-Testes HTTP automatizados do catálogo e testes automatizados
-de falha e recuperação ainda estão pendentes.
+Testes automatizados de falha e recuperação do banco ainda estão pendentes.
 
 Próximas etapas: testes do catálogo, paginação, autenticação e avaliações,
 seguidos de sincronização em background e cache.

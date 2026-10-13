@@ -4,6 +4,16 @@ Personal learning and portfolio project for a game catalog backend.
 
 [Português](README.pt-BR.md)
 
+## Evidence
+
+### HTTP integration tests
+
+Six HTTP tests passed, covering health endpoints and catalog responses
+200, 400 and 404. Database scenarios use an isolated PostgreSQL instance.
+Lint completed with no warnings or errors.
+
+![Six HTTP tests passing and clean lint output](docs/images/http-tests.png)
+
 ## Current status
 
 Implemented and verified locally:
@@ -17,13 +27,13 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- One unit test and three HTTP tests using Vitest; readiness uses
-  real PostgreSQL in an isolated test database.
+- One unit test and six HTTP tests using Vitest, including catalog
+  responses 200, 400 and 404, and readiness with real PostgreSQL
+  in an isolated test database.
 - Verified build and lint checks.
 
 Pagination, authentication, reviews, Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
-Automated catalog HTTP tests are still pending.
 
 ## Local environment
 
@@ -126,8 +136,8 @@ Liveness does not query dependencies; readiness queries PostgreSQL.
 Only Prisma P1001 is currently mapped to HTTP 503 in game lookup.
 
 Database preparation is manual, and a fresh-clone setup has not been
-fully documented or verified. Automated catalog HTTP tests and
-automated failure/recovery tests are still pending.
+fully documented or verified. Automated database failure/recovery
+tests are still pending.
 
 Next stages: catalog tests, pagination, authentication and reviews,
 followed by background synchronization and caching.
