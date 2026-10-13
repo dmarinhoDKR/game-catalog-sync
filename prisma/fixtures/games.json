@@ -1,0 +1,20 @@
+[
+  {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "title": "Nebula Courier",
+    "description": "Deliver cargo between fictional space stations.",
+    "genres": ["Simulation", "Adventure"]
+  },
+  {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "title": "Clockwork Valley",
+    "description": "Solve mechanical puzzles in a fictional valley.",
+    "genres": ["Puzzle"]
+  },
+  {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "title": "Pixel Harbor",
+    "description": "Manage a fictional harbor and its trade routes.",
+    "genres": ["Strategy", "Simulation"]
+  }
+]

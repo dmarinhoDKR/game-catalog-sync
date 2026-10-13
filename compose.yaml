@@ -1,0 +1,39 @@
+name: game-catalog-sync
+
+services:
+  db:
+    image: postgres:17.11-bookworm
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: game_catalog
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Defina POSTGRES_ADMIN_PASSWORD no .env}
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d game_catalog"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+
+  db-test:
+    image: postgres:17.11-bookworm
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: game_catalog_test
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_ADMIN_PASSWORD:?Defina POSTGRES_TEST_ADMIN_PASSWORD no .env}
+    ports:
+      - "127.0.0.1:5437:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d game_catalog_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
