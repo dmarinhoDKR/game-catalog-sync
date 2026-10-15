@@ -25,10 +25,13 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_DB: game_catalog_test
       POSTGRES_PASSWORD: ${POSTGRES_TEST_ADMIN_PASSWORD:?Defina POSTGRES_TEST_ADMIN_PASSWORD no .env}
+      POSTGRES_TEST_APP_PASSWORD: ${POSTGRES_TEST_APP_PASSWORD:?Defina POSTGRES_TEST_APP_PASSWORD no .env}
     ports:
       - "127.0.0.1:5437:5432"
     tmpfs:
       - /var/lib/postgresql/data
+    volumes:
+      - ./test/database/init.sql:/docker-entrypoint-initdb.d/01-test-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d game_catalog_test"]
       interval: 5s

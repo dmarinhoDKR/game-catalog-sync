@@ -53,9 +53,11 @@ The application requires PostgreSQL and DATABASE_URL.
 Compose exposes the development database at 127.0.0.1:5436 and,
 through the test profile, the test database at 127.0.0.1:5437.
 
-Database users, schema and permissions currently require manual setup.
-Starting Compose alone does not complete setup.
+Development database users, schema and permissions still require manual
+setup. Starting Compose alone does not complete this setup.
 Full preparation instructions are still pending.
+
+The test database has automated preparation, described in Verification.
 
 Local variables:
 
@@ -66,6 +68,8 @@ Local variables:
 - POSTGRES_TEST_ADMIN_PASSWORD: test database administrator password.
 - TEST_DATABASE_URL: limited test user connection.
 - TEST_MIGRATION_DATABASE_URL: administrator connection for test migrations.
+- POSTGRES_TEST_APP_PASSWORD: raw limited test user password;
+  it must match the password in TEST_DATABASE_URL before URL encoding.
 
 Credentials belong in .env, which is ignored by Git.
 Never use the same URL for the main and shadow databases.
@@ -104,16 +108,24 @@ Stop the API with Ctrl+C.
 
 ## Verification
 
+With the test variables configured in .env, run:
+
 ```bash
+npm run test:db:prepare
 npm test
 npm run test:e2e
 npm run build
 npm run lint
 ```
 
-E2E tests require a prepared and running db-test service.
-It uses tmpfs: data, users and permissions must be recreated after
-stopping the container. Preparation is currently manual.
+Preparation starts only db-test, creates the limited user, schema and
+permissions when initializing an empty database, and applies migrations.
+
+db-test uses tmpfs and loses its data when stopped. Run
+npm run test:db:prepare before testing after each stop.
+
+The stop, preparation and six-test execution cycle was verified without
+manual SQL or changes to the development database.
 
 ## Current structure
 
@@ -135,7 +147,7 @@ Authentication and authorization are not implemented yet.
 Liveness does not query dependencies; readiness queries PostgreSQL.
 Only Prisma P1001 is currently mapped to HTTP 503 in game lookup.
 
-Database preparation is manual, and a fresh-clone setup has not been
+Development database preparation is still manual, and a fresh-clone setup has not been
 fully documented or verified. Automated database failure/recovery
 tests are still pending.
 

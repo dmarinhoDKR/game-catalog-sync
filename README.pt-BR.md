@@ -53,9 +53,11 @@ A aplicação requer PostgreSQL e DATABASE_URL.
 O Compose disponibiliza o banco de desenvolvimento em 127.0.0.1:5436
 e, pelo perfil test, o banco de testes em 127.0.0.1:5437.
 
-A preparação dos usuários, schema e permissões ainda é manual.
-Iniciar somente o Compose não conclui o setup.
+A preparação dos usuários, schema e permissões do banco de desenvolvimento
+ainda é manual. Iniciar somente o Compose não conclui esse setup.
 As instruções completas dessa preparação ainda estão pendentes.
+
+O banco de testes possui preparação automática, descrita em Verificação.
 
 Variáveis locais usadas:
 
@@ -66,6 +68,8 @@ Variáveis locais usadas:
 - POSTGRES_TEST_ADMIN_PASSWORD: senha administrativa do banco de testes.
 - TEST_DATABASE_URL: conexão do usuário limitado de testes.
 - TEST_MIGRATION_DATABASE_URL: conexão administrativa para migrações de teste.
+- POSTGRES_TEST_APP_PASSWORD: senha original do usuário limitado de testes;
+  deve corresponder à senha de TEST_DATABASE_URL, antes da codificação na URL.
 
 Credenciais ficam no .env, ignorado pelo Git.
 Nunca use a mesma URL para o banco principal e o shadow database.
@@ -104,16 +108,24 @@ Encerre a API com Ctrl+C.
 
 ## Verificação
 
+Com as variáveis de teste configuradas no .env, execute:
+
 ```bash
+npm run test:db:prepare
 npm test
 npm run test:e2e
 npm run build
 npm run lint
 ```
 
-Os testes e2e exigem db-test preparado e ativo.
-Esse serviço usa tmpfs: dados, usuários e permissões precisam ser
-recriados após parar o container. A preparação ainda é manual.
+A preparação inicia somente db-test, cria o usuário limitado, schema
+e permissões na inicialização de um banco vazio e aplica as migrações.
+
+db-test usa tmpfs e perde seus dados ao parar. Execute novamente
+npm run test:db:prepare antes dos testes após cada parada.
+
+O ciclo de parada, preparação e execução dos seis testes foi validado
+sem SQL manual e sem alterar o banco de desenvolvimento.
 
 ## Estrutura atual
 
@@ -135,7 +147,7 @@ Autenticação e autorização ainda não foram implementadas.
 Liveness não consulta dependências; readiness consulta PostgreSQL.
 Na consulta de jogos, somente Prisma P1001 é convertido em HTTP 503.
 
-A preparação dos bancos é manual. O setup a partir de um clone novo
+A preparação do banco de desenvolvimento ainda é manual. O setup a partir de um clone novo
 ainda não foi completamente documentado ou verificado.
 Testes automatizados de falha e recuperação do banco ainda estão pendentes.
 
