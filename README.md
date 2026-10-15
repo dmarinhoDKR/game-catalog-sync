@@ -27,9 +27,9 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- One unit test and six HTTP tests using Vitest, including catalog
-  responses 200, 400 and 404, and readiness with real PostgreSQL
-  in an isolated test database.
+- One unit test and seven HTTP tests using Vitest, covering catalog
+  responses 200, 400 and 404, readiness, and database failure/recovery
+  with real PostgreSQL in an isolated test database.
 - Verified build and lint checks.
 
 Pagination, authentication, reviews, Redis, background synchronization,
@@ -148,8 +148,11 @@ Liveness does not query dependencies; readiness queries PostgreSQL.
 Only Prisma P1001 is currently mapped to HTTP 503 in game lookup.
 
 Development database preparation is still manual, and a fresh-clone setup has not been
-fully documented or verified. Automated database failure/recovery
-tests are still pending.
+fully documented or verified.
+
+The failure/recovery test stops and rebuilds only db-test.
+It discards that database's data and must not run concurrently
+with other suites sharing the same instance.
 
 Next stages: catalog tests, pagination, authentication and reviews,
 followed by background synchronization and caching.

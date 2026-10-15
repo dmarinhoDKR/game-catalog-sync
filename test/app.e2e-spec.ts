@@ -6,6 +6,7 @@ import { PrismaService } from '../src/prisma/prisma.service.js';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
+import { execFileSync } from 'node:child_process';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -110,6 +111,55 @@ describe('AppController (e2e)', () => {
       message: 'Game not found',
     });
   });
+
+  it('retorna 503 sem banco e recupera após restauração', async () => {
+    const prisma = app.get(PrismaService);
+
+    const [identity] = await prisma.$queryRaw<
+      { username: string; database: string }[]
+    >`SELECT current_user AS username, current_database() AS database`;
+
+    assert.equal(identity.username, 'game_catalog_test_app');
+    assert.equal(identity.database, 'game_catalog_test');
+
+    try {
+      execFileSync(
+        'docker',
+        ['compose', '--profile', 'test', 'stop', 'db-test'],
+        { stdio: 'inherit' }
+      );
+
+      await request(app.getHttpServer())
+        .get('/health/live')
+        .expect(200)
+        .expect({ status: 'ok' });
+
+      for (const path of ['/health/ready', `/games/${randomUUID()}`]) {
+        const response = await request(app.getHttpServer())
+          .get(path)
+          .expect(503);
+
+        expect(response.body).toMatchObject({
+          statusCode: 503,
+          error: 'Service Unavailable',
+          message: 'Database unavailable',
+        });
+      }
+    } finally {
+      execFileSync('npm', ['run', 'test:db:prepare'], {
+        stdio: 'inherit',
+      });
+    }
+
+    await request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(200)
+      .expect({ status: 'ok' });
+
+    await request(app.getHttpServer())
+      .get(`/games/${randomUUID()}`)
+      .expect(404);
+  }, 60_000);
 
   afterEach(async () => {
     await app.close();
