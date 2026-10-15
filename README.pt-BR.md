@@ -27,9 +27,9 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Um teste unitário e sete testes HTTP com Vitest, incluindo respostas
-  200, 400 e 404 do catálogo, readiness e indisponibilidade/recuperação
-  com PostgreSQL real em banco isolado.
+- Um teste unitário e oito testes e2e com Vitest, incluindo respostas
+  200, 400 e 404 do catálogo, readiness, falha/recuperação do banco
+  e encerramento da conexão PostgreSQL após app.close().
 - Build e lint verificados.
 
 Paginação, autenticação, avaliações, Redis, sincronização em background,
@@ -152,6 +152,10 @@ ainda não foi completamente documentado ou verificado.
 O teste de falha e recuperação interrompe e recria somente db-test.
 Ele descarta os dados desse banco e não deve executar simultaneamente
 com outras suítes que dependam da mesma instância.
+
+O encerramento explícito por app.close() foi verificado.
+O encerramento por sinais do sistema, como Ctrl+C, ainda não foi validado.
+Os arquivos e2e são executados sem paralelismo entre si.
 
 Próximas etapas: testes do catálogo, paginação, autenticação e avaliações,
 seguidos de sincronização em background e cache.

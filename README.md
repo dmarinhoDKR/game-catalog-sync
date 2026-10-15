@@ -27,9 +27,9 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- One unit test and seven HTTP tests using Vitest, covering catalog
-  responses 200, 400 and 404, readiness, and database failure/recovery
-  with real PostgreSQL in an isolated test database.
+- One unit test and eight e2e tests using Vitest, covering catalog
+  responses 200, 400 and 404, readiness, database failure/recovery,
+  and PostgreSQL connection closure after app.close().
 - Verified build and lint checks.
 
 Pagination, authentication, reviews, Redis, background synchronization,
@@ -153,6 +153,10 @@ fully documented or verified.
 The failure/recovery test stops and rebuilds only db-test.
 It discards that database's data and must not run concurrently
 with other suites sharing the same instance.
+
+Explicit shutdown through app.close() has been verified.
+Shutdown through system signals, such as Ctrl+C, has not been validated.
+E2E files run without parallel execution.
 
 Next stages: catalog tests, pagination, authentication and reviews,
 followed by background synchronization and caching.
