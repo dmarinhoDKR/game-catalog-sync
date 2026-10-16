@@ -134,7 +134,11 @@ describe('AppController (e2e)', () => {
         .expect(200)
         .expect({ status: 'ok' });
 
-      for (const path of ['/health/ready', `/games/${randomUUID()}`]) {
+      for (const path of [
+        '/health/ready',
+        '/games',
+        `/games/${randomUUID()}`,
+      ]) {
         const response = await request(app.getHttpServer())
           .get(path)
           .expect(503);
@@ -157,9 +161,139 @@ describe('AppController (e2e)', () => {
       .expect({ status: 'ok' });
 
     await request(app.getHttpServer())
+      .get('/games')
+      .expect(200)
+      .expect({ items: [], nextCursor: null });
+
+    await request(app.getHttpServer())
       .get(`/games/${randomUUID()}`)
       .expect(404);
   }, 60_000);
+
+  it('/games rejeita parâmetros de paginação inválidos', async () => {
+    const paths = [
+      '/games?limit=0',
+      '/games?limit=101',
+      '/games?limit=1.5',
+      '/games?limit=abc',
+      '/games?limit=',
+      '/games?limit=1&limit=2',
+      '/games?cursor=invalid-uuid',
+      '/games?cursor=',
+    ];
+
+  for (const path of paths) {
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .expect('Content-Type', /json/)
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      statusCode: 400,
+      error: 'Bad Request',
+    });
+  }
+});
+
+  it('/games pagina por id sem repetir registros', async () => {
+    const prisma = app.get(PrismaService);
+
+    const [identity] = await prisma.$queryRaw<
+      { username: string; database: string }[]
+    >`SELECT current_user AS username, current_database() AS database`;
+
+    assert.equal(identity.username, 'game_catalog_test_app');
+    assert.equal(identity.database, 'game_catalog_test');
+
+    // Exige banco de testes vazio, sem apagar registros de outros cenários.
+    expect(await prisma.game.count()).toBe(0);
+
+    const ids = [randomUUID(), randomUUID(), randomUUID()].sort();
+
+    try {
+      await prisma.game.createMany({
+        data: ids.map(id => ({
+          id,
+          title: `Pagination ${id}`,
+          description: 'Exclusive pagination test record.',
+          genres: ['Puzzle'],
+        })),
+      });
+
+      const first = await request(app.getHttpServer())
+        .get('/games?limit=2')
+        .expect(200);
+
+      expect(first.body).toMatchObject({
+        items: [{ id: ids[0] }, { id: ids[1] }],
+        nextCursor: ids[1],
+      });
+
+      const second = await request(app.getHttpServer())
+        .get('/games')
+        .query({ limit: 2, cursor: first.body.nextCursor })
+        .expect(200);
+
+      expect(second.body).toMatchObject({
+        items: [{ id: ids[2] }],
+        nextCursor: null,
+      });
+
+      const end = await request(app.getHttpServer())
+        .get('/games')
+        .query({ limit: 2, cursor: ids[2] })
+        .expect(200);
+
+      expect(end.body).toEqual({ items: [], nextCursor: null });
+    } finally {
+      await prisma.game.deleteMany({
+        where: { id: { in: ids } },
+      });
+    }
+  });
+
+  it('/games aplica limite padrão 20 e aceita máximo 100', async () => {
+    const prisma = app.get(PrismaService);
+
+    const [identity] = await prisma.$queryRaw<
+      { username: string; database: string }[]
+    >`SELECT current_user AS username, current_database() AS database`;
+
+    assert.equal(identity.username, 'game_catalog_test_app');
+    assert.equal(identity.database, 'game_catalog_test');
+    expect(await prisma.game.count()).toBe(0);
+
+    const ids = Array.from({ length: 101 }, () => randomUUID()).sort();
+
+    try {
+      await prisma.game.createMany({
+        data: ids.map(id => ({
+          id,
+          title: `Limit ${id}`,
+          description: 'Exclusive limit test record.',
+          genres: ['Puzzle'],
+        })),
+      });
+
+    const standard = await request(app.getHttpServer())
+      .get('/games')
+      .expect(200);
+
+    expect(standard.body.items).toHaveLength(20);
+    expect(standard.body.nextCursor).toBe(ids[19]);
+
+    const maximum = await request(app.getHttpServer())
+      .get('/games?limit=100')
+      .expect(200);
+
+    expect(maximum.body.items).toHaveLength(100);
+    expect(maximum.body.nextCursor).toBe(ids[99]);
+  } finally {
+    await prisma.game.deleteMany({
+      where: { id: { in: ids } },
+    });
+  }
+});
 
   afterEach(async () => {
     await app.close();

@@ -22,17 +22,20 @@ Implemented and verified locally:
 - PostgreSQL 17.11 and Prisma 7.10.0, with an initial migration.
 - Separate application and migration database users.
 - A repeatable seed with three synthetic games.
+- GET /games with UUID cursor pagination, ascending id order,
+  default limit 20 and maximum 100. Response includes items and nextCursor.
 - GET /games/:id: 200 for existing games, 404 for missing games
   and 400 for invalid UUIDs.
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- One unit test and eight e2e tests using Vitest, covering catalog
-  responses 200, 400 and 404, readiness, database failure/recovery,
-  and PostgreSQL connection closure after app.close().
+- Unit tests for the starter controller and pagination limit.
+- Eleven e2e tests with real PostgreSQL in an isolated test database,
+  covering pagination, invalid parameters, database failure/recovery,
+  and connection closure after app.close().
 - Verified build and lint checks.
 
-Pagination, authentication, reviews, Redis, background synchronization,
+Authentication, reviews, Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
 
 ## Local environment
@@ -130,7 +133,7 @@ manual SQL or changes to the development database.
 ## Current structure
 
 - `src/health/`: liveness and database readiness endpoints.
-- `src/games/`: game lookup by ID.
+- `src/games/`: lookup by ID, paginated listing and limit validation.
 - `src/prisma/`: database service and module.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
@@ -158,7 +161,12 @@ Explicit shutdown through app.close() has been verified.
 Shutdown through system signals, such as Ctrl+C, has not been validated.
 E2E files run without parallel execution.
 
-Next stages: catalog tests, pagination, authentication and reviews,
+The cursor is a UUID used as an exclusive boundary: id > cursor.
+A valid UUID does not need to identify an existing game.
+Pagination does not preserve a snapshot between requests; duplicate-free
+navigation was verified with a stable dataset.
+
+Next stages: authentication and reviews,
 followed by background synchronization and caching.
 Search, observability and AWS come later.
 

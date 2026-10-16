@@ -35,4 +35,36 @@ export class GamesService {
 
         return game;
     }
+
+    async findPage(
+        limit: number,
+        cursor?: string,
+    ): Promise<{ items: Game[]; nextCursor: string | null }> {
+        let games: Game[];
+
+        try {
+            games = await this.prisma.game.findMany({
+                where: cursor ? { id: { gt: cursor } } : undefined,
+                orderBy: { id: 'asc' },
+                take: limit + 1,
+            });
+        } catch (error) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P1001'
+            ) {
+                throw new ServiceUnavailableException('Database unavailable');
+            }
+
+            throw error;
+        }
+
+        const hasMore = games.length > limit;
+        const items = games.slice(0, limit);
+
+        return {
+            items,
+            nextCursor: hasMore ? items[items.length - 1].id : null,
+        };
+    }
 }

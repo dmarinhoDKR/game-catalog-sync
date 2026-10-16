@@ -22,17 +22,20 @@ Implementado e verificado localmente:
 - PostgreSQL 17.11 e Prisma 7.10.0, com migração inicial.
 - Usuários separados para aplicação e migrações.
 - Fixture e seed repetível com três jogos sintéticos.
+- GET /games com paginação por cursor UUID, ordem crescente por id,
+  limite padrão 20 e máximo 100. Resposta com items e nextCursor.
 - GET /games/:id: 200 para jogo existente, 404 para ausente
   e 400 para UUID inválido.
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Um teste unitário e oito testes e2e com Vitest, incluindo respostas
-  200, 400 e 404 do catálogo, readiness, falha/recuperação do banco
-  e encerramento da conexão PostgreSQL após app.close().
+- Testes unitários do controller inicial e do limite de paginação.
+- Onze testes e2e com PostgreSQL real em banco isolado, incluindo
+  paginação, parâmetros inválidos, falha/recuperação e fechamento
+  da conexão após app.close().
 - Build e lint verificados.
 
-Paginação, autenticação, avaliações, Redis, sincronização em background,
+Autenticação, avaliações, Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
 
 ## Ambiente local
@@ -130,7 +133,7 @@ sem SQL manual e sem alterar o banco de desenvolvimento.
 ## Estrutura atual
 
 - `src/health/`: endpoints de liveness e readiness do banco.
-- `src/games/`: consulta de jogo por ID.
+- `src/games/`: consulta por ID, listagem paginada e validação do limite.
 - `src/prisma/`: serviço e módulo de acesso ao banco.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
@@ -157,8 +160,13 @@ O encerramento explícito por app.close() foi verificado.
 O encerramento por sinais do sistema, como Ctrl+C, ainda não foi validado.
 Os arquivos e2e são executados sem paralelismo entre si.
 
-Próximas etapas: testes do catálogo, paginação, autenticação e avaliações,
-seguidos de sincronização em background e cache.
+O cursor é um UUID usado como limite exclusivo: id > cursor.
+Um UUID válido não precisa corresponder a um jogo existente.
+A paginação não mantém um snapshot entre requisições; a ausência
+de repetição foi verificada em dataset estável.
+
+Próximas etapas: autenticação e avaliações, seguidas de sincronização
+em background e cache.
 Busca, observabilidade e AWS ficam para depois.
 
 ## Assistência de IA
