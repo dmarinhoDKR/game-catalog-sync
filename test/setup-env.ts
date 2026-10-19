@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomBytes } from 'node:crypto';
 
 const connectionString = process.env.TEST_DATABASE_URL;
 
@@ -20,3 +21,4 @@ if (
 }
 
 process.env.DATABASE_URL = connectionString;
+process.env.JWT_SECRET = randomBytes(32).toString('hex');

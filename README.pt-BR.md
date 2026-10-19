@@ -8,7 +8,7 @@ Projeto pessoal de aprendizado e portfólio de um backend para catálogo de jogo
 
 ### Testes de integração HTTP
 
-Seis testes HTTP passaram, cobrindo os endpoints de saúde e as respostas
+Captura histórica: seis testes HTTP passaram, cobrindo os endpoints de saúde e as respostas
 200, 400 e 404 do catálogo. Os cenários de banco usam PostgreSQL isolado.
 Lint concluído sem avisos ou erros.
 
@@ -19,9 +19,16 @@ Lint concluído sem avisos ou erros.
 Implementado e verificado localmente:
 
 - NestJS e TypeScript usando ES modules.
-- PostgreSQL 17.11 e Prisma 7.10.0, com migração inicial.
+- PostgreSQL 17.11 e Prisma 7.10.0, com migrações de Game e User.
 - Usuários separados para aplicação e migrações.
-- Fixture e seed repetível com três jogos sintéticos.
+- Fixtures e seed repetível com três jogos sintéticos e dois usuários de demonstração.
+- POST /auth/login com email normalizado, verificação de senha com scrypt,
+  erro 401 genérico e JWT HS256 válido por 15 minutos.
+- Login aceita somente email e password; resposta contém apenas access_token
+  e inclui Cache-Control: no-store.
+- Limite do login: cinco requisições por minuto por IP, com 429 e Retry-After;
+  uma verificação de credenciais por vez por instância do serviço.
+- API com escuta explicitamente restrita a 127.0.0.1.
 - GET /games com paginação por cursor UUID, ordem crescente por id,
   limite padrão 20 e máximo 100. Resposta com items e nextCursor.
 - GET /games/:id: 200 para jogo existente, 404 para ausente
@@ -29,13 +36,14 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Testes unitários do controller inicial e do limite de paginação.
-- Onze testes e2e com PostgreSQL real em banco isolado, incluindo
-  paginação, parâmetros inválidos, falha/recuperação e fechamento
+- Nove testes unitários e dezesseis e2e, com PostgreSQL real em banco isolado
+  nos cenários de banco. Cobrem paginação, constraints de User, respostas HTTP
+  do login, limite de requisições, verificação de token, rejeição de tokens
+  expirados ou adulterados, falha/recuperação do banco e fechamento
   da conexão após app.close().
 - Build e lint verificados.
 
-Autenticação, avaliações, Redis, sincronização em background,
+Proteção de rotas, autorização por papel, avaliações, Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
 
 ## Ambiente local
@@ -52,7 +60,7 @@ Na raiz do projeto:
 npm ci
 ```
 
-A aplicação requer PostgreSQL e DATABASE_URL.
+A aplicação requer PostgreSQL, DATABASE_URL e JWT_SECRET.
 O Compose disponibiliza o banco de desenvolvimento em 127.0.0.1:5436
 e, pelo perfil test, o banco de testes em 127.0.0.1:5437.
 
@@ -68,6 +76,12 @@ Variáveis locais usadas:
 - DATABASE_URL: conexão da aplicação com o usuário limitado.
 - MIGRATION_DATABASE_URL: conexão do usuário de migrações.
 - SHADOW_DATABASE_URL: conexão com o banco shadow separado.
+- JWT_SECRET: 64 caracteres hexadecimais minúsculos gerados a partir de
+  32 bytes aleatórios; obrigatório na inicialização, sem valor padrão.
+- DEMO_USER_PASSWORD: senha sintética de user@example.test (somente seed).
+- DEMO_ADMIN_PASSWORD: senha sintética diferente de admin@example.test
+  (somente seed). Cada senha exige pelo menos 15 caracteres e no máximo
+  1024 bytes em UTF-8. Não use credenciais pessoais.
 - POSTGRES_TEST_ADMIN_PASSWORD: senha administrativa do banco de testes.
 - TEST_DATABASE_URL: conexão do usuário limitado de testes.
 - TEST_MIGRATION_DATABASE_URL: conexão administrativa para migrações de teste.
@@ -83,7 +97,21 @@ O client gerado também é ignorado pelo Git. Após npm ci, gere-o:
 npx --no-install prisma generate
 ```
 
-A porta da API é 3000 por padrão; PORT permite alterá-la.
+Após preparar o banco de desenvolvimento e aplicar as duas migrações,
+configure as senhas de demonstração e execute:
+
+```bash
+npm run build
+node prisma/seed.mjs
+```
+
+O seed confere a identidade do banco da aplicação e cria
+user@example.test (USER) e admin@example.test (ADMIN) com hashes scrypt.
+Repetições preservam jogos, senhas e papéis existentes. Alterar uma senha
+do seed no .env não rotaciona a credencial armazenada; a verificação falha
+se a senha configurada ou o papel esperado divergir do registro persistido.
+
+A API escuta em 127.0.0.1, na porta 3000 por padrão; PORT permite alterar a porta.
 Confira se a porta está disponível:
 
 ```bash
@@ -127,28 +155,41 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-O ciclo de parada, preparação e execução dos seis testes foi validado
-sem SQL manual e sem alterar o banco de desenvolvimento.
+A última verificação completa aprovou nove testes unitários e dezesseis
+e2e, além de build e lint. Os testes de falha/recuperação recriam somente
+db-test e reaplicam as duas migrações. O setup e2e gera um segredo JWT
+temporário em vez de usar o segredo de desenvolvimento.
 
 ## Estrutura atual
 
 - `src/health/`: endpoints de liveness e readiness do banco.
 - `src/games/`: consulta por ID, listagem paginada e validação do limite.
+- `src/auth/`: controller de login, validação, hash de senha, opções JWT
+  e serviço de autenticação.
 - `src/prisma/`: serviço e módulo de acesso ao banco.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
-- `prisma/`: schema, migrações, fixture e seed.
-- `test/`: testes HTTP e validação do ambiente de testes.
+- `prisma/`: schema, migrações, fixtures sintéticas e seed.
+- `test/`: testes de integração HTTP e de serviço e validação do ambiente.
 
 O endpoint inicial `GET /` ainda retorna `Hello World!`.
 
 ## Limitações e próximas etapas
 
 O projeto é destinado ao desenvolvimento local.
-Autenticação e autorização ainda não foram implementadas.
+O login emite tokens, mas nenhuma rota exige token ou aplica autorização
+USER/ADMIN atualmente. Refresh tokens e revogação não foram implementados.
+O contador do limite de requisições fica na memória de cada processo e
+reinicia com a aplicação; não é compartilhado entre instâncias.
+A liberação após o intervalo e o isolamento entre diferentes IPs
+ainda não foram testados.
 
 Liveness não consulta dependências; readiness consulta PostgreSQL.
 Na consulta de jogos, somente Prisma P1001 é convertido em HTTP 503.
+O serviço de autenticação também converte o encerramento administrativo
+de conexão observado como P2039/57P01 em 503. Falha e recuperação da
+autenticação foram testadas no serviço; a resposta HTTP do login durante
+indisponibilidade ainda não foi testada separadamente.
 
 A preparação do banco de desenvolvimento ainda é manual. O setup a partir de um clone novo
 ainda não foi completamente documentado ou verificado.
@@ -165,7 +206,8 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: autenticação e avaliações, seguidas de sincronização
+Próximas etapas: proteção de rotas por token, autorização por papel e avaliações,
+seguidas de sincronização
 em background e cache.
 Busca, observabilidade e AWS ficam para depois.
 
