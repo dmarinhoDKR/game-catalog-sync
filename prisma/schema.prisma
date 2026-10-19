@@ -22,3 +22,21 @@ model Game {
 
   @@schema("catalog")
 }
+
+enum Role {
+  USER
+  ADMIN
+
+  @@schema("catalog")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@schema("catalog")
+}
