@@ -28,6 +28,11 @@ Implementado e verificado localmente:
   e inclui Cache-Control: no-store.
 - Limite do login: cinco requisições por minuto por IP, com 429 e Retry-After;
   uma verificação de credenciais por vez por instância do serviço.
+- Guard Bearer JWT registrado e exportado pelo AuthModule. Testes HTTP em
+  rota exclusiva de teste aceitam token válido e retornam 401 para token
+  ausente, malformado, expirado ou adulterado, identidade ou papel inválidos
+  e emissor, destinatário ou algoritmo inesperados. As rotas funcionais
+  ainda não usam o guard.
 - API com escuta explicitamente restrita a 127.0.0.1.
 - GET /games com paginação por cursor UUID, ordem crescente por id,
   limite padrão 20 e máximo 100. Resposta com items e nextCursor.
@@ -36,14 +41,15 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Nove testes unitários e dezesseis e2e, com PostgreSQL real em banco isolado
+- Nove testes unitários e dezessete e2e, com PostgreSQL real em banco isolado
   nos cenários de banco. Cobrem paginação, constraints de User, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
   da conexão após app.close().
 - Build e lint verificados.
 
-Proteção de rotas, autorização por papel, avaliações, Redis, sincronização em background,
+Aplicação do guard às rotas funcionais, autorização por papel, avaliações,
+Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
 
 ## Ambiente local
@@ -155,8 +161,10 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A última verificação completa aprovou nove testes unitários e dezesseis
-e2e, além de build e lint. Os testes de falha/recuperação recriam somente
+A última regressão e2e aprovou dezessete testes em sete arquivos;
+build e lint também passaram para as alterações do guard. Os nove testes
+unitários passaram no marco anterior de login e não foram repetidos nesta etapa.
+Os testes de falha/recuperação recriam somente
 db-test e reaplicam as duas migrações. O setup e2e gera um segredo JWT
 temporário em vez de usar o segredo de desenvolvimento.
 
@@ -165,7 +173,7 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/health/`: endpoints de liveness e readiness do banco.
 - `src/games/`: consulta por ID, listagem paginada e validação do limite.
 - `src/auth/`: controller de login, validação, hash de senha, opções JWT
-  e serviço de autenticação.
+  e serviço de autenticação, além do guard Bearer JWT.
 - `src/prisma/`: serviço e módulo de acesso ao banco.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
@@ -177,8 +185,11 @@ O endpoint inicial `GET /` ainda retorna `Hello World!`.
 ## Limitações e próximas etapas
 
 O projeto é destinado ao desenvolvimento local.
-O login emite tokens, mas nenhuma rota exige token ou aplica autorização
-USER/ADMIN atualmente. Refresh tokens e revogação não foram implementados.
+O login emite tokens, e o guard Bearer está disponível e testado em uma
+rota exclusiva de teste. As rotas funcionais continuam públicas e não
+aplicam autorização USER/ADMIN. O guard valida as claims do token sem
+consultar se o usuário ainda existe ou se seu papel mudou no banco.
+Refresh tokens e revogação não foram implementados.
 O contador do limite de requisições fica na memória de cada processo e
 reinicia com a aplicação; não é compartilhado entre instâncias.
 A liberação após o intervalo e o isolamento entre diferentes IPs

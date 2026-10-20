@@ -28,6 +28,10 @@ Implemented and verified locally:
   and include Cache-Control: no-store.
 - Login rate limit: five requests per minute per IP, with 429 and Retry-After;
   one credential verification at a time per service instance.
+- Bearer JWT guard registered and exported by AuthModule. HTTP tests on a
+  test-only route accept a valid token and return 401 for missing, malformed,
+  expired or tampered tokens, invalid subject or role, and unexpected
+  issuer, audience or algorithm. Functional routes do not use the guard yet.
 - API bound explicitly to 127.0.0.1.
 - GET /games with UUID cursor pagination, ascending id order,
   default limit 20 and maximum 100. Response includes items and nextCursor.
@@ -36,14 +40,15 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- Nine unit tests and sixteen e2e tests, with database scenarios using real
+- Nine unit tests and seventeen e2e tests, with database scenarios using real
   PostgreSQL in an isolated test database. Coverage includes pagination,
   User constraints, login HTTP responses, rate limiting, token verification,
   rejection of expired or tampered tokens, database failure/recovery,
   and connection closure after app.close().
 - Verified build and lint checks.
 
-Route protection, role-based authorization, reviews, Redis, background synchronization,
+Guard application to functional routes, role-based authorization, reviews,
+Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
 
 ## Local environment
@@ -155,8 +160,10 @@ permissions when initializing an empty database, and applies migrations.
 db-test uses tmpfs and loses its data when stopped. Run
 npm run test:db:prepare before testing after each stop.
 
-The latest full verification passed nine unit tests and sixteen e2e tests,
-plus build and lint. Failure/recovery tests rebuild only db-test and reapply
+The latest e2e regression passed seventeen tests across seven files;
+build and lint also passed for the guard changes. The nine unit tests passed
+at the previous login milestone and were not rerun for this change.
+Failure/recovery tests rebuild only db-test and reapply
 both migrations. E2E setup generates a temporary JWT secret instead of using
 the development secret.
 
@@ -165,7 +172,7 @@ the development secret.
 - `src/health/`: liveness and database readiness endpoints.
 - `src/games/`: lookup by ID, paginated listing and limit validation.
 - `src/auth/`: login controller, validation, password hashing, JWT options
-  and authentication service.
+  and authentication service, and Bearer JWT guard.
 - `src/prisma/`: database service and module.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
@@ -177,8 +184,11 @@ The starter `GET /` endpoint still returns `Hello World!`.
 ## Limitations and next stages
 
 The project is intended for local development.
-Login issues tokens, but no route currently requires a token or enforces
-USER/ADMIN authorization. Refresh tokens and token revocation are not implemented.
+Login issues tokens, and the Bearer guard is available and tested on a
+test-only route. Functional routes remain public and do not enforce
+USER/ADMIN authorization. The guard validates token claims without checking
+whether the user still exists or their role has changed in the database.
+Refresh tokens and token revocation are not implemented.
 Rate-limit counters are held in memory per process and reset on restart;
 they are not shared across instances. Window expiry and isolation between
 different client IPs have not yet been tested.

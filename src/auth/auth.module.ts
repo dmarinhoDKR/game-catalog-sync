@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { createJwtOptions } from './jwt-options.js';
+import { JwtAuthGuard } from './jwt-auth.guard.js';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { createJwtOptions } from './jwt-options.js';
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, ThrottlerGuard],
-  exports: [AuthService, ThrottlerGuard],
+  providers: [AuthService, ThrottlerGuard, JwtAuthGuard],
+  exports: [AuthService, ThrottlerGuard, JwtAuthGuard, JwtModule],
 })
 export class AuthModule {}
