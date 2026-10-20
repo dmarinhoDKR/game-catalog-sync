@@ -19,7 +19,11 @@ Lint concluído sem avisos ou erros.
 Implementado e verificado localmente:
 
 - NestJS e TypeScript usando ES modules.
-- PostgreSQL 17.11 e Prisma 7.10.0, com migrações de Game e User.
+- PostgreSQL 17.11 e Prisma 7.10.0, com três migrações de Game, User e Review.
+- Persistência de Review com uma avaliação por par usuário/jogo, constraint
+  CHECK de nota entre 1 e 5 e chaves estrangeiras com ON DELETE RESTRICT.
+  Testes verificam notas válidas, rejeição de notas inválidas e duplicidade,
+  referências inexistentes e bloqueio de exclusão de usuário ou jogo referenciado.
 - Usuários separados para aplicação e migrações.
 - Fixtures e seed repetível com três jogos sintéticos e dois usuários de demonstração.
 - POST /auth/login com email normalizado, verificação de senha com scrypt,
@@ -45,14 +49,14 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Nove testes unitários e dezoito e2e, com PostgreSQL real em banco isolado
-  nos cenários de banco. Cobrem paginação, constraints de User, respostas HTTP
+- Nove testes unitários e dezenove e2e, com PostgreSQL real em banco isolado
+  nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
   da conexão após app.close().
 - Build e lint verificados.
 
-Aplicação dos guards às rotas funcionais, avaliações,
+Aplicação dos guards às rotas funcionais e endpoints de avaliação,
 Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
 
@@ -107,7 +111,7 @@ O client gerado também é ignorado pelo Git. Após npm ci, gere-o:
 npx --no-install prisma generate
 ```
 
-Após preparar o banco de desenvolvimento e aplicar as duas migrações,
+Após preparar o banco de desenvolvimento e aplicar as três migrações,
 configure as senhas de demonstração e execute:
 
 ```bash
@@ -165,11 +169,11 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A última regressão e2e aprovou dezoito testes em oito arquivos;
-build e lint também passaram para as alterações do guard administrativo. Os nove testes
+A última regressão e2e aprovou dezenove testes em nove arquivos;
+build e lint também passaram durante a preparação da persistência de Review. Os nove testes
 unitários passaram no marco anterior de login e não foram repetidos nesta etapa.
 Os testes de falha/recuperação recriam somente
-db-test e reaplicam as duas migrações. O setup e2e gera um segredo JWT
+db-test e reaplicam as três migrações. O setup e2e gera um segredo JWT
 temporário em vez de usar o segredo de desenvolvimento.
 
 ## Estrutura atual
@@ -189,6 +193,9 @@ O endpoint inicial `GET /` ainda retorna `Hello World!`.
 ## Limitações e próximas etapas
 
 O projeto é destinado ao desenvolvimento local.
+A persistência de Review e as constraints estão implementadas, mas os endpoints
+de avaliação e o isolamento HTTP entre usuários ainda não foram implementados
+ou testados.
 O login emite tokens, e ambos os guards estão disponíveis e testados em
 rotas exclusivas de teste. As rotas funcionais continuam públicas e não
 aplicam autorização USER/ADMIN. JwtAuthGuard valida as claims sem consultar
@@ -224,7 +231,7 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: avaliações com isolamento entre usuários e aplicação dos guards
+Próximas etapas: endpoints de avaliação com isolamento entre usuários e aplicação dos guards
 às rotas funcionais,
 seguidas de sincronização
 em background e cache.

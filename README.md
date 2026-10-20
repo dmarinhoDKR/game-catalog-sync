@@ -19,7 +19,12 @@ Lint completed with no warnings or errors.
 Implemented and verified locally:
 
 - NestJS and TypeScript using ES modules.
-- PostgreSQL 17.11 and Prisma 7.10.0, with Game and User migrations.
+- PostgreSQL 17.11 and Prisma 7.10.0, with three migrations for Game, User
+  and Review.
+- Review persistence with one review per user/game pair, a database CHECK
+  constraint for ratings from 1 to 5, and foreign keys with ON DELETE RESTRICT.
+  Tests verify valid ratings, rejected invalid ratings and duplicate reviews,
+  nonexistent references, and blocked deletion of referenced users or games.
 - Separate application and migration database users.
 - A repeatable seed with three synthetic games and two demonstration users.
 - POST /auth/login with normalized email, scrypt password verification,
@@ -44,14 +49,14 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- Nine unit tests and eighteen e2e tests, with database scenarios using real
+- Nine unit tests and nineteen e2e tests, with database scenarios using real
   PostgreSQL in an isolated test database. Coverage includes pagination,
-  User constraints, login HTTP responses, rate limiting, token verification,
+  User and Review constraints, login HTTP responses, rate limiting, token verification,
   rejection of expired or tampered tokens, database failure/recovery,
   and connection closure after app.close().
 - Verified build and lint checks.
 
-Guard application to functional routes, reviews,
+Guard application to functional routes and review endpoints,
 Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
 
@@ -106,7 +111,7 @@ The generated client is also ignored by Git. Generate it after npm ci:
 npx --no-install prisma generate
 ```
 
-After preparing the development database and applying both migrations,
+After preparing the development database and applying all three migrations,
 configure the demonstration passwords and run:
 
 ```bash
@@ -164,11 +169,11 @@ permissions when initializing an empty database, and applies migrations.
 db-test uses tmpfs and loses its data when stopped. Run
 npm run test:db:prepare before testing after each stop.
 
-The latest e2e regression passed eighteen tests across eight files;
-build and lint also passed for the administrative guard changes. The nine unit tests passed
+The latest e2e regression passed nineteen tests across nine files;
+build and lint also passed during preparation of Review persistence. The nine unit tests passed
 at the previous login milestone and were not rerun for this change.
 Failure/recovery tests rebuild only db-test and reapply
-both migrations. E2E setup generates a temporary JWT secret instead of using
+all three migrations. E2E setup generates a temporary JWT secret instead of using
 the development secret.
 
 ## Current structure
@@ -188,6 +193,8 @@ The starter `GET /` endpoint still returns `Hello World!`.
 ## Limitations and next stages
 
 The project is intended for local development.
+Review persistence and database constraints are implemented, but review
+endpoints and HTTP isolation between users have not yet been implemented or tested.
 Login issues tokens, and both guards are available and tested on test-only
 routes. Functional routes remain public and do not enforce USER/ADMIN
 authorization. JwtAuthGuard validates token claims without checking the
@@ -222,7 +229,7 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Next stages: reviews with user isolation and guard application to functional routes,
+Next stages: review endpoints with user isolation and guard application to functional routes,
 followed by background synchronization and caching.
 Search, observability and AWS come later.
 

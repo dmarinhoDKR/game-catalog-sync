@@ -19,6 +19,7 @@ model Game {
   description String
   genres      String[]
   updatedAt   DateTime @updatedAt
+  reviews     Review[]
 
   @@schema("catalog")
 }
@@ -37,6 +38,24 @@ model User {
   role         Role     @default(USER)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  reviews      Review[]
 
+  @@schema("catalog")
+}
+
+model Review {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  gameId    String   @db.Uuid
+  rating    Int
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, gameId])
+  @@index([gameId])
   @@schema("catalog")
 }
