@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { createJwtOptions } from './jwt-options.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
+import { AdminGuard } from './admin.guard.js';
 
 @Module({
   imports: [
@@ -18,7 +19,14 @@ import { JwtAuthGuard } from './jwt-auth.guard.js';
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, ThrottlerGuard, JwtAuthGuard],
-  exports: [AuthService, ThrottlerGuard, JwtAuthGuard, JwtModule],
+  providers: [AuthService, ThrottlerGuard, JwtAuthGuard, AdminGuard],
+  exports: [
+    AuthService,
+    ThrottlerGuard,
+    JwtAuthGuard,
+    JwtModule,
+    AdminGuard,
+    PrismaModule,
+  ],
 })
 export class AuthModule {}

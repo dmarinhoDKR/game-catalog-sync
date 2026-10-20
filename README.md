@@ -32,6 +32,10 @@ Implemented and verified locally:
   test-only route accept a valid token and return 401 for missing, malformed,
   expired or tampered tokens, invalid subject or role, and unexpected
   issuer, audience or algorithm. Functional routes do not use the guard yet.
+- AdminGuard checks the current database role after JWT authentication.
+  HTTP tests on a test-only route cover 401 without authentication or for a
+  removed user, 403 for USER, ADMIN access, demotion with the same token,
+  and 503 during database failure with recovery afterward.
 - API bound explicitly to 127.0.0.1.
 - GET /games with UUID cursor pagination, ascending id order,
   default limit 20 and maximum 100. Response includes items and nextCursor.
@@ -40,14 +44,14 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- Nine unit tests and seventeen e2e tests, with database scenarios using real
+- Nine unit tests and eighteen e2e tests, with database scenarios using real
   PostgreSQL in an isolated test database. Coverage includes pagination,
   User constraints, login HTTP responses, rate limiting, token verification,
   rejection of expired or tampered tokens, database failure/recovery,
   and connection closure after app.close().
 - Verified build and lint checks.
 
-Guard application to functional routes, role-based authorization, reviews,
+Guard application to functional routes, reviews,
 Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
 
@@ -160,8 +164,8 @@ permissions when initializing an empty database, and applies migrations.
 db-test uses tmpfs and loses its data when stopped. Run
 npm run test:db:prepare before testing after each stop.
 
-The latest e2e regression passed seventeen tests across seven files;
-build and lint also passed for the guard changes. The nine unit tests passed
+The latest e2e regression passed eighteen tests across eight files;
+build and lint also passed for the administrative guard changes. The nine unit tests passed
 at the previous login milestone and were not rerun for this change.
 Failure/recovery tests rebuild only db-test and reapply
 both migrations. E2E setup generates a temporary JWT secret instead of using
@@ -172,7 +176,7 @@ the development secret.
 - `src/health/`: liveness and database readiness endpoints.
 - `src/games/`: lookup by ID, paginated listing and limit validation.
 - `src/auth/`: login controller, validation, password hashing, JWT options
-  and authentication service, and Bearer JWT guard.
+  and authentication service, Bearer JWT guard and administrative guard.
 - `src/prisma/`: database service and module.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
@@ -184,10 +188,13 @@ The starter `GET /` endpoint still returns `Hello World!`.
 ## Limitations and next stages
 
 The project is intended for local development.
-Login issues tokens, and the Bearer guard is available and tested on a
-test-only route. Functional routes remain public and do not enforce
-USER/ADMIN authorization. The guard validates token claims without checking
-whether the user still exists or their role has changed in the database.
+Login issues tokens, and both guards are available and tested on test-only
+routes. Functional routes remain public and do not enforce USER/ADMIN
+authorization. JwtAuthGuard validates token claims without checking the
+database; AdminGuard additionally checks user existence and the current role.
+Administrative failure/recovery testing confirms 503 during the outage and
+401 afterward for a removed user; it does not demonstrate a successful
+administrative operation after recovery.
 Refresh tokens and token revocation are not implemented.
 Rate-limit counters are held in memory per process and reset on restart;
 they are not shared across instances. Window expiry and isolation between
@@ -215,7 +222,7 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Next stages: token-based route protection, role-based authorization and reviews,
+Next stages: reviews with user isolation and guard application to functional routes,
 followed by background synchronization and caching.
 Search, observability and AWS come later.
 

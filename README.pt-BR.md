@@ -33,6 +33,10 @@ Implementado e verificado localmente:
   ausente, malformado, expirado ou adulterado, identidade ou papel inválidos
   e emissor, destinatário ou algoritmo inesperados. As rotas funcionais
   ainda não usam o guard.
+- AdminGuard consulta o papel atual no banco após autenticação JWT.
+  Testes HTTP em rota exclusiva de teste cobrem 401 sem autenticação ou
+  para usuário removido, 403 para USER, acesso ADMIN, rebaixamento com o
+  mesmo token e 503 durante falha do banco, com recuperação posterior.
 - API com escuta explicitamente restrita a 127.0.0.1.
 - GET /games com paginação por cursor UUID, ordem crescente por id,
   limite padrão 20 e máximo 100. Resposta com items e nextCursor.
@@ -41,14 +45,14 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Nove testes unitários e dezessete e2e, com PostgreSQL real em banco isolado
+- Nove testes unitários e dezoito e2e, com PostgreSQL real em banco isolado
   nos cenários de banco. Cobrem paginação, constraints de User, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
   da conexão após app.close().
 - Build e lint verificados.
 
-Aplicação do guard às rotas funcionais, autorização por papel, avaliações,
+Aplicação dos guards às rotas funcionais, avaliações,
 Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
 
@@ -161,8 +165,8 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A última regressão e2e aprovou dezessete testes em sete arquivos;
-build e lint também passaram para as alterações do guard. Os nove testes
+A última regressão e2e aprovou dezoito testes em oito arquivos;
+build e lint também passaram para as alterações do guard administrativo. Os nove testes
 unitários passaram no marco anterior de login e não foram repetidos nesta etapa.
 Os testes de falha/recuperação recriam somente
 db-test e reaplicam as duas migrações. O setup e2e gera um segredo JWT
@@ -173,7 +177,7 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/health/`: endpoints de liveness e readiness do banco.
 - `src/games/`: consulta por ID, listagem paginada e validação do limite.
 - `src/auth/`: controller de login, validação, hash de senha, opções JWT
-  e serviço de autenticação, além do guard Bearer JWT.
+  e serviço de autenticação, além dos guards Bearer JWT e administrativo.
 - `src/prisma/`: serviço e módulo de acesso ao banco.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
@@ -185,10 +189,13 @@ O endpoint inicial `GET /` ainda retorna `Hello World!`.
 ## Limitações e próximas etapas
 
 O projeto é destinado ao desenvolvimento local.
-O login emite tokens, e o guard Bearer está disponível e testado em uma
-rota exclusiva de teste. As rotas funcionais continuam públicas e não
-aplicam autorização USER/ADMIN. O guard valida as claims do token sem
-consultar se o usuário ainda existe ou se seu papel mudou no banco.
+O login emite tokens, e ambos os guards estão disponíveis e testados em
+rotas exclusivas de teste. As rotas funcionais continuam públicas e não
+aplicam autorização USER/ADMIN. JwtAuthGuard valida as claims sem consultar
+o banco; AdminGuard também consulta a existência do usuário e seu papel atual.
+O teste de falha/recuperação administrativa confirma 503 durante a parada
+e 401 após a restauração para usuário removido; não demonstra uma operação
+administrativa bem-sucedida após a recuperação.
 Refresh tokens e revogação não foram implementados.
 O contador do limite de requisições fica na memória de cada processo e
 reinicia com a aplicação; não é compartilhado entre instâncias.
@@ -217,7 +224,8 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: proteção de rotas por token, autorização por papel e avaliações,
+Próximas etapas: avaliações com isolamento entre usuários e aplicação dos guards
+às rotas funcionais,
 seguidas de sincronização
 em background e cache.
 Busca, observabilidade e AWS ficam para depois.
