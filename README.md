@@ -36,7 +36,7 @@ Implemented and verified locally:
 - Bearer JWT guard registered and exported by AuthModule. HTTP tests on a
   test-only route accept a valid token and return 401 for missing, malformed,
   expired or tampered tokens, invalid subject or role, and unexpected
-  issuer, audience or algorithm. Functional routes do not use the guard yet.
+  issuer, audience or algorithm. The guard also protects review writes.
 - AdminGuard checks the current database role after JWT authentication.
   HTTP tests on a test-only route cover 401 without authentication or for a
   removed user, 403 for USER, ADMIN access, demotion with the same token,
@@ -46,18 +46,23 @@ Implemented and verified locally:
   default limit 20 and maximum 100. Response includes items and nextCursor.
 - GET /games/:id: 200 for existing games, 404 for missing games
   and 400 for invalid UUIDs.
+- PUT /games/:id/review creates or updates the authenticated user's review
+  with HTTP 200, preserving its ID on update. userId comes only from the token;
+  the body accepts only integer rating from 1 to 5 and body text trimmed to
+  1–2000 UTF-16 code units. HTTP tests confirm rejection of an extra userId,
+  independent reviews for two users, 401 for a removed user, 404 for a missing
+  game, and 503 during database failure followed by a successful write after recovery.
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- Nine unit tests and nineteen e2e tests, with database scenarios using real
+- Thirteen unit tests and twenty-one e2e tests, with database scenarios using real
   PostgreSQL in an isolated test database. Coverage includes pagination,
   User and Review constraints, login HTTP responses, rate limiting, token verification,
   rejection of expired or tampered tokens, database failure/recovery,
   and connection closure after app.close().
 - Verified build and lint checks.
 
-Guard application to functional routes and review endpoints,
-Redis, background synchronization,
+Review deletion, administrative endpoints, Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
 
 ## Local environment
@@ -169,9 +174,8 @@ permissions when initializing an empty database, and applies migrations.
 db-test uses tmpfs and loses its data when stopped. Run
 npm run test:db:prepare before testing after each stop.
 
-The latest e2e regression passed nineteen tests across nine files;
-build and lint also passed during preparation of Review persistence. The nine unit tests passed
-at the previous login milestone and were not rerun for this change.
+The latest full verification passed thirteen unit tests across eight files
+and twenty-one e2e tests across eleven files, plus build, lint and git diff --check.
 Failure/recovery tests rebuild only db-test and reapply
 all three migrations. E2E setup generates a temporary JWT secret instead of using
 the development secret.
@@ -182,7 +186,8 @@ the development secret.
 - `src/games/`: lookup by ID, paginated listing and limit validation.
 - `src/auth/`: login controller, validation, password hashing, JWT options
   and authentication service, Bearer JWT guard and administrative guard.
-- `src/prisma/`: database service and module.
+- `src/reviews/`: authenticated PUT controller, input validation, service and module.
+- `src/prisma/`: database service, module and unavailability error classifier.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
 - `prisma/`: schema, migrations, synthetic fixtures and seed.
@@ -193,12 +198,14 @@ The starter `GET /` endpoint still returns `Hello World!`.
 ## Limitations and next stages
 
 The project is intended for local development.
-Review persistence and database constraints are implemented, but review
-endpoints and HTTP isolation between users have not yet been implemented or tested.
-Login issues tokens, and both guards are available and tested on test-only
-routes. Functional routes remain public and do not enforce USER/ADMIN
-authorization. JwtAuthGuard validates token claims without checking the
-database; AdminGuard additionally checks user existence and the current role.
+Review creation/update is integrated into the application and tested over HTTP
+with user isolation. DELETE /games/:id/review is not implemented yet.
+Concurrent review conflicts and reference deletion during writes have not
+been tested; the service maps P2002/P2003 to 409 and relays other unexpected errors.
+Catalog GET routes and health endpoints remain public. Review PUT requires
+a Bearer token. JwtAuthGuard validates token claims without querying the
+database; ReviewsService checks user existence before writing. AdminGuard
+checks user existence and current role, but is still used only on a test route.
 Administrative failure/recovery testing confirms 503 during the outage and
 401 afterward for a removed user; it does not demonstrate a successful
 administrative operation after recovery.
@@ -229,8 +236,8 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Next stages: review endpoints with user isolation and guard application to functional routes,
-followed by background synchronization and caching.
+Next stages: authenticated review deletion and concurrent conflict tests,
+followed by background synchronization, administrative endpoints and caching.
 Search, observability and AWS come later.
 
 ## AI assistance

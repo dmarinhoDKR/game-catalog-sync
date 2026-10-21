@@ -35,8 +35,8 @@ Implementado e verificado localmente:
 - Guard Bearer JWT registrado e exportado pelo AuthModule. Testes HTTP em
   rota exclusiva de teste aceitam token válido e retornam 401 para token
   ausente, malformado, expirado ou adulterado, identidade ou papel inválidos
-  e emissor, destinatário ou algoritmo inesperados. As rotas funcionais
-  ainda não usam o guard.
+  e emissor, destinatário ou algoritmo inesperados. O guard também protege
+  a escrita de avaliações.
 - AdminGuard consulta o papel atual no banco após autenticação JWT.
   Testes HTTP em rota exclusiva de teste cobrem 401 sem autenticação ou
   para usuário removido, 403 para USER, acesso ADMIN, rebaixamento com o
@@ -46,18 +46,23 @@ Implementado e verificado localmente:
   limite padrão 20 e máximo 100. Resposta com items e nextCursor.
 - GET /games/:id: 200 para jogo existente, 404 para ausente
   e 400 para UUID inválido.
+- PUT /games/:id/review cria ou atualiza a avaliação do usuário autenticado
+  com HTTP 200, preservando o ID na atualização. userId vem somente do token;
+  o corpo aceita apenas rating inteiro de 1 a 5 e body com trim e comprimento
+  de 1 a 2000 unidades UTF-16. Testes HTTP confirmam rejeição de userId extra,
+  avaliações independentes para dois usuários, 401 para usuário removido,
+  404 para jogo ausente e 503 durante falha do banco, com gravação após recuperação.
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Nove testes unitários e dezenove e2e, com PostgreSQL real em banco isolado
+- Treze testes unitários e vinte e um e2e, com PostgreSQL real em banco isolado
   nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
   da conexão após app.close().
 - Build e lint verificados.
 
-Aplicação dos guards às rotas funcionais e endpoints de avaliação,
-Redis, sincronização em background,
+Exclusão de avaliações, endpoints administrativos, Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
 
 ## Ambiente local
@@ -169,9 +174,8 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A última regressão e2e aprovou dezenove testes em nove arquivos;
-build e lint também passaram durante a preparação da persistência de Review. Os nove testes
-unitários passaram no marco anterior de login e não foram repetidos nesta etapa.
+A última verificação completa aprovou treze testes unitários em oito arquivos
+e vinte e um e2e em onze arquivos, além de build, lint e git diff --check.
 Os testes de falha/recuperação recriam somente
 db-test e reaplicam as três migrações. O setup e2e gera um segredo JWT
 temporário em vez de usar o segredo de desenvolvimento.
@@ -182,7 +186,8 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/games/`: consulta por ID, listagem paginada e validação do limite.
 - `src/auth/`: controller de login, validação, hash de senha, opções JWT
   e serviço de autenticação, além dos guards Bearer JWT e administrativo.
-- `src/prisma/`: serviço e módulo de acesso ao banco.
+- `src/reviews/`: controller PUT autenticado, validação, serviço e módulo.
+- `src/prisma/`: serviço, módulo e classificador de erros de indisponibilidade.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
 - `prisma/`: schema, migrações, fixtures sintéticas e seed.
@@ -193,13 +198,15 @@ O endpoint inicial `GET /` ainda retorna `Hello World!`.
 ## Limitações e próximas etapas
 
 O projeto é destinado ao desenvolvimento local.
-A persistência de Review e as constraints estão implementadas, mas os endpoints
-de avaliação e o isolamento HTTP entre usuários ainda não foram implementados
-ou testados.
-O login emite tokens, e ambos os guards estão disponíveis e testados em
-rotas exclusivas de teste. As rotas funcionais continuam públicas e não
-aplicam autorização USER/ADMIN. JwtAuthGuard valida as claims sem consultar
-o banco; AdminGuard também consulta a existência do usuário e seu papel atual.
+A criação/atualização de avaliações está integrada à aplicação e testada por
+HTTP com isolamento entre usuários. DELETE /games/:id/review ainda não existe.
+Conflitos concorrentes e remoção de referências durante a escrita ainda não
+foram testados; o serviço converte P2002/P2003 em 409 e relança outros erros inesperados.
+As consultas GET do catálogo e os endpoints de saúde continuam públicos.
+O PUT de avaliação exige token Bearer. JwtAuthGuard valida as claims sem
+consultar o banco; ReviewsService verifica a existência do usuário antes
+da escrita. AdminGuard consulta existência e papel atual, mas continua
+aplicado somente em rota de teste.
 O teste de falha/recuperação administrativa confirma 503 durante a parada
 e 401 após a restauração para usuário removido; não demonstra uma operação
 administrativa bem-sucedida após a recuperação.
@@ -231,10 +238,8 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: endpoints de avaliação com isolamento entre usuários e aplicação dos guards
-às rotas funcionais,
-seguidas de sincronização
-em background e cache.
+Próximas etapas: exclusão autenticada de avaliações e testes de conflitos
+concorrentes, seguidos de sincronização em background, endpoints administrativos e cache.
 Busca, observabilidade e AWS ficam para depois.
 
 ## Assistência de IA
