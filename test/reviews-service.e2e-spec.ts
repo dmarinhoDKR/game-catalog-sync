@@ -141,6 +141,47 @@ it('cria e atualiza a avaliação do mesmo usuário sem duplicar', async () => {
         }),
       ).toBe(2);
 
+      await expect(
+        reviews.remove(randomUUID(), gameId),
+      ).rejects.toMatchObject({
+        status: 401,
+        message: 'Invalid or missing token',
+      });
+
+      await reviews.remove(userId, gameId);
+
+      expect(
+        await prisma.review.findUnique({
+          where: { userId_gameId: { userId, gameId } },
+        }),
+      ).toBeNull();
+
+      // Repetir a exclusão e usar um jogo ausente não gera erro.
+      await expect(
+        reviews.remove(userId, gameId),
+      ).resolves.toBeUndefined();
+
+      await expect(
+        reviews.remove(userId, randomUUID()),
+      ).resolves.toBeUndefined();
+
+      expect(
+        await prisma.review.findUniqueOrThrow({
+          where: { id: secondReview.id },
+        }),
+      ).toMatchObject({
+        userId: secondUserId,
+        gameId,
+        rating: 4,
+        body: 'Second user review.',
+      });
+
+      expect(
+        await prisma.review.count({
+          where: { gameId, userId: { in: [userId, secondUserId] } },
+        }),
+      ).toBe(1);
+
       try {
         execFileSync(
           'docker',
@@ -157,6 +198,13 @@ it('cria e atualiza a avaliação do mesmo usuário sem duplicar', async () => {
           status: 503,
           message: 'Database unavailable',
         });
+
+        await expect(
+          reviews.remove(userId, gameId),
+        ).rejects.toMatchObject({
+          status: 503,
+          message: 'Database unavailable',
+        });
       } finally {
         execFileSync('npm', ['run', 'test:db:prepare'], {
           stdio: 'inherit',
@@ -168,6 +216,13 @@ it('cria e atualiza a avaliação do mesmo usuário sem duplicar', async () => {
           rating: 3,
           body: 'Database recovery test.',
         }),
+      ).rejects.toMatchObject({
+        status: 401,
+        message: 'Invalid or missing token',
+      });
+
+      await expect(
+        reviews.remove(userId, gameId),
       ).rejects.toMatchObject({
         status: 401,
         message: 'Invalid or missing token',

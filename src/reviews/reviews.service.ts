@@ -72,4 +72,27 @@ export class ReviewsService {
       throw error;
     }
   }
+
+  async remove(userId: string, gameId: string): Promise<void> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+
+      if (!user) {
+        throw new UnauthorizedException('Invalid or missing token');
+      }
+
+      await this.prisma.review.deleteMany({
+        where: { userId, gameId },
+      });
+    } catch (error) {
+      if (isDatabaseUnavailable(error)) {
+        throw new ServiceUnavailableException('Database unavailable');
+      }
+
+      throw error;
+    }
+  }
 }

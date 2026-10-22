@@ -52,17 +52,23 @@ Implemented and verified locally:
   1–2000 UTF-16 code units. HTTP tests confirm rejection of an extra userId,
   independent reviews for two users, 401 for a removed user, 404 for a missing
   game, and 503 during database failure followed by a successful write after recovery.
+- DELETE /games/:id/review removes only the authenticated user's review.
+  Returns 204 with no body, including repeated deletion or a missing game/review.
+  Client-supplied userId in the body or query does not select the owner.
+  HTTP tests verify 401 without authentication or for a removed user, 400 for
+  an invalid UUID, preservation of another user's review, and 503 during an
+  outage followed by successful deletion after recovery with the same app and token.
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- Thirteen unit tests and twenty-one e2e tests, with database scenarios using real
+- Thirteen unit tests and twenty-two e2e tests, with database scenarios using real
   PostgreSQL in an isolated test database. Coverage includes pagination,
   User and Review constraints, login HTTP responses, rate limiting, token verification,
   rejection of expired or tampered tokens, database failure/recovery,
   and connection closure after app.close().
 - Verified build and lint checks.
 
-Review deletion, administrative endpoints, Redis, background synchronization,
+Administrative endpoints, Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
 
 ## Local environment
@@ -174,8 +180,10 @@ permissions when initializing an empty database, and applies migrations.
 db-test uses tmpfs and loses its data when stopped. Run
 npm run test:db:prepare before testing after each stop.
 
-The latest full verification passed thirteen unit tests across eight files
-and twenty-one e2e tests across eleven files, plus build, lint and git diff --check.
+The latest e2e regression passed twenty-two tests across twelve files;
+build, lint and git diff --check also passed for the deletion milestone.
+The thirteen unit tests passed at the previous PUT milestone and were not
+rerun for this change.
 Failure/recovery tests rebuild only db-test and reapply
 all three migrations. E2E setup generates a temporary JWT secret instead of using
 the development secret.
@@ -186,7 +194,7 @@ the development secret.
 - `src/games/`: lookup by ID, paginated listing and limit validation.
 - `src/auth/`: login controller, validation, password hashing, JWT options
   and authentication service, Bearer JWT guard and administrative guard.
-- `src/reviews/`: authenticated PUT controller, input validation, service and module.
+- `src/reviews/`: authenticated PUT/DELETE controller, input validation, service and module.
 - `src/prisma/`: database service, module and unavailability error classifier.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
@@ -198,12 +206,12 @@ The starter `GET /` endpoint still returns `Hello World!`.
 ## Limitations and next stages
 
 The project is intended for local development.
-Review creation/update is integrated into the application and tested over HTTP
-with user isolation. DELETE /games/:id/review is not implemented yet.
+Review creation, update and deletion are integrated into the application
+and tested over HTTP with user isolation.
 Concurrent review conflicts and reference deletion during writes have not
 been tested; the service maps P2002/P2003 to 409 and relays other unexpected errors.
-Catalog GET routes and health endpoints remain public. Review PUT requires
-a Bearer token. JwtAuthGuard validates token claims without querying the
+Catalog GET routes and health endpoints remain public. Review PUT and DELETE
+require a Bearer token. JwtAuthGuard validates token claims without querying the
 database; ReviewsService checks user existence before writing. AdminGuard
 checks user existence and current role, but is still used only on a test route.
 Administrative failure/recovery testing confirms 503 during the outage and
@@ -236,7 +244,7 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Next stages: authenticated review deletion and concurrent conflict tests,
+Next stages: concurrent review conflict tests,
 followed by background synchronization, administrative endpoints and caching.
 Search, observability and AWS come later.
 

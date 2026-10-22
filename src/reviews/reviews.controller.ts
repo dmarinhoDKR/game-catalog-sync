@@ -7,6 +7,9 @@ import {
   Req,
   UnauthorizedException,
   UseGuards,
+  Delete,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import type { Review } from '../generated/prisma/client.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
@@ -34,6 +37,23 @@ export class ReviewsController {
       request.auth.userId,
       gameId,
       input,
+    );
+  }
+
+  @Delete(':id/review')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  remove(
+    @Param('id', new ParseUUIDPipe()) gameId: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    if (!request.auth) {
+      throw new UnauthorizedException('Invalid or missing token');
+    }
+
+    return this.reviewsService.remove(
+      request.auth.userId,
+      gameId,
     );
   }
 }

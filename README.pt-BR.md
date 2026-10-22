@@ -52,17 +52,23 @@ Implementado e verificado localmente:
   de 1 a 2000 unidades UTF-16. Testes HTTP confirmam rejeição de userId extra,
   avaliações independentes para dois usuários, 401 para usuário removido,
   404 para jogo ausente e 503 durante falha do banco, com gravação após recuperação.
+- DELETE /games/:id/review remove somente a avaliação do usuário autenticado.
+  Retorna 204 sem corpo, inclusive na repetição ou com jogo/avaliação ausente.
+  userId enviado no corpo ou na query não escolhe o proprietário.
+  Testes HTTP verificam 401 sem autenticação ou para usuário removido, 400
+  para UUID inválido, preservação da avaliação alheia e 503 durante a parada,
+  seguido de exclusão após recuperação com a mesma aplicação e token.
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Treze testes unitários e vinte e um e2e, com PostgreSQL real em banco isolado
+- Treze testes unitários e vinte e dois e2e, com PostgreSQL real em banco isolado
   nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
   da conexão após app.close().
 - Build e lint verificados.
 
-Exclusão de avaliações, endpoints administrativos, Redis, sincronização em background,
+Endpoints administrativos, Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
 
 ## Ambiente local
@@ -174,8 +180,10 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A última verificação completa aprovou treze testes unitários em oito arquivos
-e vinte e um e2e em onze arquivos, além de build, lint e git diff --check.
+A última regressão e2e aprovou vinte e dois testes em doze arquivos;
+build, lint e git diff --check também passaram no marco de exclusão.
+Os treze testes unitários passaram no marco anterior do PUT e não foram
+repetidos nesta etapa.
 Os testes de falha/recuperação recriam somente
 db-test e reaplicam as três migrações. O setup e2e gera um segredo JWT
 temporário em vez de usar o segredo de desenvolvimento.
@@ -186,7 +194,7 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/games/`: consulta por ID, listagem paginada e validação do limite.
 - `src/auth/`: controller de login, validação, hash de senha, opções JWT
   e serviço de autenticação, além dos guards Bearer JWT e administrativo.
-- `src/reviews/`: controller PUT autenticado, validação, serviço e módulo.
+- `src/reviews/`: controller PUT/DELETE autenticado, validação, serviço e módulo.
 - `src/prisma/`: serviço, módulo e classificador de erros de indisponibilidade.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
@@ -198,12 +206,12 @@ O endpoint inicial `GET /` ainda retorna `Hello World!`.
 ## Limitações e próximas etapas
 
 O projeto é destinado ao desenvolvimento local.
-A criação/atualização de avaliações está integrada à aplicação e testada por
-HTTP com isolamento entre usuários. DELETE /games/:id/review ainda não existe.
+A criação, atualização e exclusão de avaliações estão integradas à aplicação
+e testadas por HTTP com isolamento entre usuários.
 Conflitos concorrentes e remoção de referências durante a escrita ainda não
 foram testados; o serviço converte P2002/P2003 em 409 e relança outros erros inesperados.
 As consultas GET do catálogo e os endpoints de saúde continuam públicos.
-O PUT de avaliação exige token Bearer. JwtAuthGuard valida as claims sem
+O PUT e o DELETE de avaliação exigem token Bearer. JwtAuthGuard valida as claims sem
 consultar o banco; ReviewsService verifica a existência do usuário antes
 da escrita. AdminGuard consulta existência e papel atual, mas continua
 aplicado somente em rota de teste.
@@ -238,8 +246,8 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: exclusão autenticada de avaliações e testes de conflitos
-concorrentes, seguidos de sincronização em background, endpoints administrativos e cache.
+Próximas etapas: testes de conflitos concorrentes nas avaliações, seguidos
+de sincronização em background, endpoints administrativos e cache.
 Busca, observabilidade e AWS ficam para depois.
 
 ## Assistência de IA
