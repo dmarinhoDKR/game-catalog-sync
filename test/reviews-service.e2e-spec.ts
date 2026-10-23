@@ -48,6 +48,45 @@ it('cria e atualiza a avaliação do mesmo usuário sem duplicar', async () => {
         },
       });
 
+      const concurrentInputs = [
+        { rating: 2, body: 'Concurrent version A.' },
+        { rating: 4, body: 'Concurrent version B.' },
+      ];
+
+      const results = await Promise.allSettled(
+        concurrentInputs.map(input => reviews.save(userId, gameId, input)),
+      );
+
+      expect(
+        results.filter(result => result.status === 'fulfilled').length,
+      ).toBeGreaterThanOrEqual(1);
+
+      const persisted = await prisma.review.findUniqueOrThrow({
+        where: { userId_gameId: { userId, gameId } },
+      });
+
+      expect(
+        await prisma.review.count({ where: { userId, gameId } }),
+      ).toBe(1);
+
+      expect(concurrentInputs).toContainEqual({
+        rating: persisted.rating,
+        body: persisted.body,
+      });
+
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          expect(result.value.id).toBe(persisted.id);
+          expect(result.value.userId).toBe(userId);
+          expect(result.value.gameId).toBe(gameId);
+        } else {
+          expect(result.reason).toMatchObject({
+            status: 409,
+            message: 'Review changed concurrently; retry',
+          });
+        }
+      }
+
       const created = await reviews.save(userId, gameId, {
         rating: 2,
         body: 'First version.',

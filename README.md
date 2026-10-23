@@ -61,12 +61,15 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- Thirteen unit tests and twenty-two e2e tests, with database scenarios using real
+- Fifteen unit tests and twenty-two e2e tests, with database scenarios using real
   PostgreSQL in an isolated test database. Coverage includes pagination,
   User and Review constraints, login HTTP responses, rate limiting, token verification,
   rejection of expired or tampered tokens, database failure/recovery,
   and connection closure after app.close().
 - Verified build and lint checks.
+- Two simultaneous ReviewsService.save calls against real PostgreSQL preserve
+  one review and a complete rating/body pair from one input. Separate unit tests
+  simulate P2002/P2003 and verify sanitized 409 conflicts.
 
 Administrative endpoints, Redis, background synchronization,
 CI and cloud deployment are not implemented yet.
@@ -182,8 +185,10 @@ npm run test:db:prepare before testing after each stop.
 
 The latest e2e regression passed twenty-two tests across twelve files;
 build, lint and git diff --check also passed for the deletion milestone.
-The thirteen unit tests passed at the previous PUT milestone and were not
-rerun for this change.
+The thirteen earlier unit tests passed at the PUT milestone. Two additional
+conflict-mapping unit tests and the affected service e2e file passed separately
+for the concurrency change, along with build and lint. The full suites were
+not rerun for this test-only change.
 Failure/recovery tests rebuild only db-test and reapply
 all three migrations. E2E setup generates a temporary JWT secret instead of using
 the development secret.
@@ -208,8 +213,11 @@ The starter `GET /` endpoint still returns `Hello World!`.
 The project is intended for local development.
 Review creation, update and deletion are integrated into the application
 and tested over HTTP with user isolation.
-Concurrent review conflicts and reference deletion during writes have not
-been tested; the service maps P2002/P2003 to 409 and relays other unexpected errors.
+Simultaneous service calls have been tested with PostgreSQL, but the test does
+not force database scheduling or guarantee a conflict occurs. Mapping P2002/P2003
+to 409 is covered by simulated errors; an actual race producing these errors,
+reference deletion during writes, and the HTTP 409 contract remain unverified.
+This is not an HTTP concurrency or load test. Unexpected errors are rethrown.
 Catalog GET routes and health endpoints remain public. Review PUT and DELETE
 require a Bearer token. JwtAuthGuard validates token claims without querying the
 database; ReviewsService checks user existence before writing. AdminGuard

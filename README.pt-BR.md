@@ -61,12 +61,15 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Treze testes unitários e vinte e dois e2e, com PostgreSQL real em banco isolado
+- Quinze testes unitários e vinte e dois e2e, com PostgreSQL real em banco isolado
   nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
   da conexão após app.close().
 - Build e lint verificados.
+- Duas chamadas simultâneas a ReviewsService.save com PostgreSQL real mantêm
+  uma avaliação e um par completo de nota/texto de uma das entradas. Testes
+  unitários separados simulam P2002/P2003 e verificam conflitos 409 sanitizados.
 
 Endpoints administrativos, Redis, sincronização em background,
 CI e deploy cloud ainda não foram implementados.
@@ -182,8 +185,10 @@ npm run test:db:prepare antes dos testes após cada parada.
 
 A última regressão e2e aprovou vinte e dois testes em doze arquivos;
 build, lint e git diff --check também passaram no marco de exclusão.
-Os treze testes unitários passaram no marco anterior do PUT e não foram
-repetidos nesta etapa.
+Os treze testes unitários anteriores passaram no marco do PUT. Dois novos
+testes unitários de mapeamento de conflitos e o arquivo e2e do serviço afetado
+passaram separadamente na etapa de concorrência, assim como build e lint.
+As suítes completas não foram repetidas nessa alteração somente de testes.
 Os testes de falha/recuperação recriam somente
 db-test e reaplicam as três migrações. O setup e2e gera um segredo JWT
 temporário em vez de usar o segredo de desenvolvimento.
@@ -208,8 +213,12 @@ O endpoint inicial `GET /` ainda retorna `Hello World!`.
 O projeto é destinado ao desenvolvimento local.
 A criação, atualização e exclusão de avaliações estão integradas à aplicação
 e testadas por HTTP com isolamento entre usuários.
-Conflitos concorrentes e remoção de referências durante a escrita ainda não
-foram testados; o serviço converte P2002/P2003 em 409 e relança outros erros inesperados.
+Chamadas simultâneas ao serviço foram testadas com PostgreSQL, mas o teste não
+força a ordem no banco nem garante que ocorra um conflito. A conversão de
+P2002/P2003 em 409 foi coberta por erros simulados; uma corrida real que produza
+esses erros, remoção de referências durante a escrita e contrato HTTP de 409
+continuam sem comprovação. Não é teste de concorrência HTTP nem de carga.
+Erros inesperados são relançados.
 As consultas GET do catálogo e os endpoints de saúde continuam públicos.
 O PUT e o DELETE de avaliação exigem token Bearer. JwtAuthGuard valida as claims sem
 consultar o banco; ReviewsService verifica a existência do usuário antes
