@@ -42,6 +42,7 @@ Implemented and verified locally:
   removed user, 403 for USER, ADMIN access, demotion with the same token,
   and 503 during database failure with recovery afterward.
 - API bound explicitly to 127.0.0.1.
+- Swagger UI and OpenAPI JSON with an HTTP test of the generated contract.
 - GET /games with UUID cursor pagination, ascending id order,
   default limit 20 and maximum 100. Response includes items and nextCursor.
 - GET /games/:id: 200 for existing games, 404 for missing games
@@ -163,6 +164,18 @@ With the database available, both return HTTP 200 and {"status":"ok"}.
 If the database query fails, readiness returns 503;
 liveness remains independent of that query.
 
+### API documentation
+
+With the API running, open [Swagger UI](http://127.0.0.1:3000/docs/).
+The contract is available as [OpenAPI JSON](http://127.0.0.1:3000/docs-json).
+Use the configured PORT in both URLs if it differs from 3000.
+
+The document describes login input and token response, optional pagination,
+game and review response schemas, health checks and error statuses.
+Review PUT and DELETE declare Bearer JWT authentication. Authorization is not
+persisted across page reloads; external schema validation is disabled.
+Error responses have descriptions without complete body schemas.
+
 Stop the API with Ctrl+C.
 
 ## Verification
@@ -183,12 +196,22 @@ permissions when initializing an empty database, and applies migrations.
 db-test uses tmpfs and loses its data when stopped. Run
 npm run test:db:prepare before testing after each stop.
 
-The latest e2e regression passed twenty-two tests across twelve files;
-build, lint and git diff --check also passed for the deletion milestone.
-The thirteen earlier unit tests passed at the PUT milestone. Two additional
-conflict-mapping unit tests and the affected service e2e file passed separately
-for the concurrency change, along with build and lint. The full suites were
-not rerun for this test-only change.
+After dependency updates, the full suites passed fifteen unit tests and
+twenty-two e2e tests across twelve files, along with build and lint.
+The additional OpenAPI HTTP test subsequently passed separately, followed by clean
+lint. The full e2e suite has not been rerun with this additional test.
+Build passed after extracting the shared OpenAPI setup; /docs-json returned 200.
+The latest npm audit reported zero vulnerabilities, a point-in-time dependency check.
+
+The contract test checks pagination, matching game schemas, Bearer requirements
+for review writes, review input, an empty DELETE 204 response and health schemas.
+It checks the generated document, not every runtime response against that document.
+Run it separately with:
+
+```bash
+npm run test:e2e -- test/openapi.e2e-spec.ts
+```
+
 Failure/recovery tests rebuild only db-test and reapply
 all three migrations. E2E setup generates a temporary JWT secret instead of using
 the development secret.
@@ -203,6 +226,7 @@ the development secret.
 - `src/prisma/`: database service, module and unavailability error classifier.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
+- `src/openapi.ts`: shared Swagger and OpenAPI configuration.
 - `prisma/`: schema, migrations, synthetic fixtures and seed.
 - `test/`: HTTP and service integration tests and test environment validation.
 
@@ -252,7 +276,7 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Next stages: concurrent review conflict tests,
+Next stages: remaining API documentation and EXPLAIN ANALYZE evidence,
 followed by background synchronization, administrative endpoints and caching.
 Search, observability and AWS come later.
 

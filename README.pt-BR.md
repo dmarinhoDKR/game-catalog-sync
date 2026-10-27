@@ -42,6 +42,7 @@ Implementado e verificado localmente:
   para usuário removido, 403 para USER, acesso ADMIN, rebaixamento com o
   mesmo token e 503 durante falha do banco, com recuperação posterior.
 - API com escuta explicitamente restrita a 127.0.0.1.
+- Swagger UI e JSON OpenAPI com teste HTTP do contrato gerado.
 - GET /games com paginação por cursor UUID, ordem crescente por id,
   limite padrão 20 e máximo 100. Resposta com items e nextCursor.
 - GET /games/:id: 200 para jogo existente, 404 para ausente
@@ -163,6 +164,18 @@ Com o banco disponível, ambos retornam HTTP 200 e {"status":"ok"}.
 Se a consulta ao banco falhar, readiness retorna 503;
 liveness permanece independente dessa consulta.
 
+### Documentação da API
+
+Com a API ativa, abra o [Swagger UI](http://127.0.0.1:3000/docs/).
+O contrato está disponível como [JSON OpenAPI](http://127.0.0.1:3000/docs-json).
+Use a porta configurada em PORT nas duas URLs caso seja diferente de 3000.
+
+O documento descreve a entrada do login e a resposta com token, paginação opcional,
+esquemas de resposta de jogos e avaliações, verificações de saúde e status de erro.
+PUT e DELETE de avaliações declaram autenticação Bearer JWT. A autorização não
+persiste ao recarregar a página; a validação externa de esquemas está desativada.
+As respostas de erro têm descrições, sem esquemas completos dos corpos.
+
 Encerre a API com Ctrl+C.
 
 ## Verificação
@@ -183,12 +196,23 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A última regressão e2e aprovou vinte e dois testes em doze arquivos;
-build, lint e git diff --check também passaram no marco de exclusão.
-Os treze testes unitários anteriores passaram no marco do PUT. Dois novos
-testes unitários de mapeamento de conflitos e o arquivo e2e do serviço afetado
-passaram separadamente na etapa de concorrência, assim como build e lint.
-As suítes completas não foram repetidas nessa alteração somente de testes.
+Após atualizar as dependências, as suítes completas aprovaram quinze testes unitários
+e vinte e dois e2e em doze arquivos, além de build e lint.
+O teste HTTP adicional do OpenAPI passou depois, separadamente, seguido de lint limpo.
+A suíte e2e completa ainda não foi repetida com esse teste adicional.
+O build passou após extrair a configuração compartilhada do OpenAPI;
+/docs-json retornou 200. O último npm audit reportou zero vulnerabilidades,
+uma verificação pontual das dependências.
+
+O teste do contrato verifica paginação, esquemas de jogo iguais, exigência de Bearer
+na escrita de avaliações, entrada de avaliação, DELETE 204 sem corpo e esquemas de saúde.
+Ele verifica o documento gerado, sem comparar todas as respostas em execução
+com esse documento. Para executá-lo separadamente:
+
+```bash
+npm run test:e2e -- test/openapi.e2e-spec.ts
+```
+
 Os testes de falha/recuperação recriam somente
 db-test e reaplicam as três migrações. O setup e2e gera um segredo JWT
 temporário em vez de usar o segredo de desenvolvimento.
@@ -203,6 +227,7 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/prisma/`: serviço, módulo e classificador de erros de indisponibilidade.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
+- `src/openapi.ts`: configuração compartilhada do Swagger e OpenAPI.
 - `prisma/`: schema, migrações, fixtures sintéticas e seed.
 - `test/`: testes de integração HTTP e de serviço e validação do ambiente.
 
@@ -255,7 +280,7 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: testes de conflitos concorrentes nas avaliações, seguidos
+Próximas etapas: pendências da documentação da API e evidência de EXPLAIN ANALYZE, seguidas
 de sincronização em background, endpoints administrativos e cache.
 Busca, observabilidade e AWS ficam para depois.
 
