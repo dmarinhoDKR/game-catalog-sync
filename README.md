@@ -38,7 +38,12 @@ Implemented and verified locally:
   a gameId index, contentHash storage and a foreign key with ON DELETE RESTRICT.
   A PostgreSQL test verifies duplicate identity rejection, the same external ID
   across different providers, missing game rejection and blocked game deletion.
-  Import persistence and comparison against stored hashes are not implemented yet.
+- CatalogImportService validates a batch and persists it in one Serializable
+  transaction: creates games and sources together, updates changed content,
+  and skips matching hashes. Returns created/updated/unchanged/rejected counts.
+  A PostgreSQL integration test verifies repeated imports without writes,
+  updates preserving IDs, partial batches preserving absent games, mixed valid,
+  invalid and duplicate records, and rollback after a simulated application failure.
 - Synthetic source validation accepts provider synthetic/version 1 and up to
   1,000 records per batch. Invalid records and duplicate external IDs are counted
   as rejected; the first valid record for each identity is retained.
@@ -224,7 +229,7 @@ After adding GameSource, the fourth migration was applied to development and tes
 databases. Development counts remained three games, two users and zero reviews;
 GameSource was empty. Client generation, build and lint passed.
 The new GameSource persistence test then passed separately, followed by clean lint.
-The full suites have not been rerun after this schema change or the source parsers.
+The full suites have not been rerun after GameSource, the source parsers or the importer.
 The nine new source parser/hash unit tests passed in targeted runs (six parser
 tests together and three hash tests separately); build and lint passed.
 To run these three files together:
@@ -234,6 +239,16 @@ npm test -- src/sync/parse-source-game.spec.ts src/sync/parse-source-batch.spec.
 ```
 The latest recorded npm audit reported zero vulnerabilities on 2026-10-27;
 this is a point-in-time dependency check.
+
+The new catalog import integration test passed separately after each scenario
+was added; build passed for the service and lint passed after the final test change.
+The rollback scenario uses a simulated hash-function failure after the first write,
+with actual PostgreSQL state checked after rollback. It does not simulate a database outage.
+Run it separately with:
+
+```bash
+npm run test:e2e -- test/catalog-import.e2e-spec.ts
+```
 
 Run the GameSource test separately with:
 
@@ -261,7 +276,7 @@ the development secret.
 - `src/auth/`: login controller, validation, password hashing, JWT options
   and authentication service, Bearer JWT guard and administrative guard.
 - `src/reviews/`: authenticated PUT/DELETE controller, input validation, service and module.
-- `src/sync/`: source record/batch validation and normalized content hashing.
+- `src/sync/`: source validation, normalized content hashing and transactional import service.
 - `src/prisma/`: database service, module and unavailability error classifier.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
@@ -321,8 +336,14 @@ letters/digits/hyphens, starting with a letter or digit; titles 1-200, descripti
 1-10,000, and 1-20 genres of 1-50 code units each after trimming.
 The catalog-v1 test fixture is separate from the seed; validation does not import it.
 
-Next stages: transactional, idempotent import persistence, followed by
-Redis/BullMQ background synchronization, administrative endpoints and caching.
+The importer is currently exercised through service integration tests; it is not
+registered in an application module or exposed over HTTP or through a worker.
+Its transaction timeout is 30 seconds, not a throughput guarantee for 1,000 records.
+Concurrent imports, serialization retries, database failure/recovery and rollback
+from a real database error have not been tested. Errors propagate to the caller.
+The service does not link existing seed games by title.
+
+Next stages: Redis/BullMQ background synchronization, administrative endpoints and caching.
 Complete error response schemas remain a documentation task.
 Search, observability and AWS come later.
 

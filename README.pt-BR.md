@@ -38,7 +38,12 @@ Implementado e verificado localmente:
   índice em gameId, armazenamento de contentHash e FK com ON DELETE RESTRICT.
   Teste com PostgreSQL verifica rejeição de identidade duplicada, mesmo ID externo
   em provedores diferentes, rejeição de jogo ausente e bloqueio de exclusão do jogo.
-  A gravação da importação e a comparação com hashes persistidos ainda não existem.
+- CatalogImportService valida o lote e grava em uma transação Serializable:
+  cria jogos e origens juntos, atualiza conteúdo alterado e ignora hashes iguais.
+  Retorna contadores created/updated/unchanged/rejected. Teste com PostgreSQL verifica
+  repetição sem regravação, atualização preservando IDs, preservação de jogos ausentes
+  em lotes parciais, registros válidos/inválidos/duplicados misturados e rollback
+  após falha de aplicação simulada.
 - Validação da fonte sintética aceita provider synthetic/version 1 e até
   1.000 registros por lote. Registros inválidos e IDs externos duplicados contam
   como rejeitados; o primeiro registro válido de cada identidade é preservado.
@@ -225,7 +230,7 @@ Após adicionar GameSource, a quarta migração foi aplicada em desenvolvimento 
 As contagens de desenvolvimento permaneceram em três jogos, dois usuários e nenhuma
 avaliação; GameSource estava vazia. Geração do client, build e lint passaram.
 O novo teste de persistência de GameSource passou separadamente, seguido de lint limpo.
-As suítes completas ainda não foram repetidas após essa alteração do schema ou os parsers.
+As suítes completas ainda não foram repetidas após GameSource, os parsers ou o importador.
 Os nove testes novos de validação/hash passaram em execuções específicas (seis dos
 parsers juntos e três do hash separadamente); build e lint passaram.
 Para executar esses três arquivos juntos:
@@ -235,6 +240,16 @@ npm test -- src/sync/parse-source-game.spec.ts src/sync/parse-source-batch.spec.
 ```
 O último npm audit registrado reportou zero vulnerabilidades em 27/10/2026;
 é uma verificação pontual das dependências.
+
+O novo teste de integração da importação passou separadamente após cada cenário;
+o build passou para o serviço e o lint passou após a última alteração do teste.
+O rollback usa falha simulada na função de hash após a primeira gravação,
+com conferência do estado real no PostgreSQL após rollback. Não simula parada do banco.
+Para executá-lo separadamente:
+
+```bash
+npm run test:e2e -- test/catalog-import.e2e-spec.ts
+```
 
 Para executar o teste de GameSource separadamente:
 
@@ -262,7 +277,7 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/auth/`: controller de login, validação, hash de senha, opções JWT
   e serviço de autenticação, além dos guards Bearer JWT e administrativo.
 - `src/reviews/`: controller PUT/DELETE autenticado, validação, serviço e módulo.
-- `src/sync/`: validação de registros/lotes e hash do conteúdo normalizado.
+- `src/sync/`: validação, hash do conteúdo normalizado e serviço de importação transacional.
 - `src/prisma/`: serviço, módulo e classificador de erros de indisponibilidade.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
@@ -325,8 +340,14 @@ dígitos ou hífens, começando por letra ou dígito; títulos 1-200, descriçõ
 e 1-20 gêneros de 1-50 unidades cada após trim.
 A fixture catalog-v1 é separada do seed; sua validação não realiza importação.
 
-Próximas etapas: persistência transacional e idempotente da importação,
-seguidas de sincronização com Redis/BullMQ, endpoints administrativos e cache.
+O importador é exercitado por testes de integração do serviço; ainda não está
+registrado em módulo da aplicação nem exposto por HTTP ou worker.
+O timeout da transação é de 30 segundos, sem garantia de vazão para 1.000 registros.
+Importações concorrentes, retries de serialização, falha/recuperação do banco
+e rollback por erro real do banco ainda não foram testados. Erros são propagados.
+O serviço não associa jogos existentes do seed pela igualdade do título.
+
+Próximas etapas: sincronização com Redis/BullMQ, endpoints administrativos e cache.
 Os esquemas completos dos erros permanecem uma pendência de documentação.
 Busca, observabilidade e AWS ficam para depois.
 
