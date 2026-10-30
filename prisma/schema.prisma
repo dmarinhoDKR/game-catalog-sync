@@ -14,13 +14,27 @@ datasource db {
 }
 
 model Game {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String       @id @default(uuid()) @db.Uuid
   title       String
   description String
   genres      String[]
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime     @updatedAt
   reviews     Review[]
+  sources     GameSource[]
 
+  @@schema("catalog")
+}
+
+model GameSource {
+  provider    String
+  externalId  String
+  gameId      String @db.Uuid
+  contentHash String
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Restrict)
+
+  @@id([provider, externalId])
+  @@index([gameId])
   @@schema("catalog")
 }
 

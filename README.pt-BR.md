@@ -29,11 +29,16 @@ A proteção de tabela vazia acrescentada às instruções ainda não foi exerci
 Implementado e verificado localmente:
 
 - NestJS e TypeScript usando ES modules.
-- PostgreSQL 17.11 e Prisma 7.10.0, com três migrações de Game, User e Review.
+- PostgreSQL 17.11 e Prisma 7.10.0, com quatro migrações de Game, User, Review e GameSource.
 - Persistência de Review com uma avaliação por par usuário/jogo, constraint
   CHECK de nota entre 1 e 5 e chaves estrangeiras com ON DELETE RESTRICT.
   Testes verificam notas válidas, rejeição de notas inválidas e duplicidade,
   referências inexistentes e bloqueio de exclusão de usuário ou jogo referenciado.
+- Persistência de GameSource com chave primária composta por provider/externalId,
+  índice em gameId, armazenamento de contentHash e FK com ON DELETE RESTRICT.
+  Teste com PostgreSQL verifica rejeição de identidade duplicada, mesmo ID externo
+  em provedores diferentes, rejeição de jogo ausente e bloqueio de exclusão do jogo.
+  O hash apenas é armazenado; importação e detecção de mudanças ainda não existem.
 - Usuários separados para aplicação e migrações.
 - Fixtures e seed repetível com três jogos sintéticos e dois usuários de demonstração.
 - POST /auth/login com email normalizado, verificação de senha com scrypt,
@@ -72,7 +77,7 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Quinze testes unitários e vinte e dois e2e, com PostgreSQL real em banco isolado
+- Quinze testes unitários e vinte e três e2e na última regressão completa, com PostgreSQL real em banco isolado
   nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
@@ -136,7 +141,7 @@ O client gerado também é ignorado pelo Git. Após npm ci, gere-o:
 npx --no-install prisma generate
 ```
 
-Após preparar o banco de desenvolvimento e aplicar as três migrações,
+Após preparar o banco de desenvolvimento e aplicar as quatro migrações,
 configure as senhas de demonstração e execute:
 
 ```bash
@@ -206,13 +211,21 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-Após atualizar as dependências, as suítes completas aprovaram quinze testes unitários
-e vinte e dois e2e em doze arquivos, além de build e lint.
-O teste HTTP adicional do OpenAPI passou depois, separadamente, seguido de lint limpo.
-A suíte e2e completa ainda não foi repetida com esse teste adicional.
-O build passou após extrair a configuração compartilhada do OpenAPI;
-/docs-json retornou 200. O último npm audit reportou zero vulnerabilidades,
-uma verificação pontual das dependências.
+A regressão completa de 30/10/2026 aprovou quinze testes unitários e vinte e três
+e2e em treze arquivos e2e, incluindo OpenAPI, além de build e lint.
+Após adicionar GameSource, a quarta migração foi aplicada em desenvolvimento e testes.
+As contagens de desenvolvimento permaneceram em três jogos, dois usuários e nenhuma
+avaliação; GameSource estava vazia. Geração do client, build e lint passaram.
+O novo teste de persistência de GameSource passou separadamente, seguido de lint limpo.
+As suítes completas ainda não foram repetidas após essa alteração do schema.
+O último npm audit registrado reportou zero vulnerabilidades em 27/10/2026;
+é uma verificação pontual das dependências.
+
+Para executar o teste de GameSource separadamente:
+
+```bash
+npm run test:e2e -- test/game-source-persistence.e2e-spec.ts
+```
 
 O teste do contrato verifica paginação, esquemas de jogo iguais, exigência de Bearer
 na escrita de avaliações, entrada de avaliação, DELETE 204 sem corpo e esquemas de saúde.
@@ -224,7 +237,7 @@ npm run test:e2e -- test/openapi.e2e-spec.ts
 ```
 
 Os testes de falha/recuperação recriam somente
-db-test e reaplicam as três migrações. O setup e2e gera um segredo JWT
+db-test e reaplicam as migrações disponíveis. O setup e2e gera um segredo JWT
 temporário em vez de usar o segredo de desenvolvimento.
 
 ## Estrutura atual
@@ -290,8 +303,9 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: pendências da documentação da API, seguidas
-de sincronização em background, endpoints administrativos e cache.
+Próximas etapas: validação da importação sintética e persistência idempotente,
+seguidas de sincronização com Redis/BullMQ, endpoints administrativos e cache.
+Os esquemas completos dos erros permanecem uma pendência de documentação.
 Busca, observabilidade e AWS ficam para depois.
 
 ## Assistência de IA
