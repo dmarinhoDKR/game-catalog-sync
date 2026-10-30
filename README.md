@@ -14,6 +14,16 @@ Lint completed with no warnings or errors.
 
 ![Six HTTP tests passing and clean lint output](docs/images/http-tests.png)
 
+### Cursor pagination query plan
+
+[SQL, dataset preparation and observed plan](docs/pagination-explain.md).
+On 2026-10-30, a query against 10,000 synthetic games in the isolated test
+database used Game_pkey for the cursor condition and ascending ID order,
+without a separate Sort. LIMIT stopped execution after 21 rows.
+The observed execution recorded four shared-buffer hits and took 0.035 ms.
+This single local measurement is not an HTTP benchmark or production latency claim.
+The empty-table guard added to the reproduction instructions has not yet been exercised.
+
 ## Current status
 
 Implemented and verified locally:
@@ -276,7 +286,7 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Next stages: remaining API documentation and EXPLAIN ANALYZE evidence,
+Next stages: remaining API documentation,
 followed by background synchronization, administrative endpoints and caching.
 Search, observability and AWS come later.
 
