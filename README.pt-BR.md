@@ -38,7 +38,15 @@ Implementado e verificado localmente:
   índice em gameId, armazenamento de contentHash e FK com ON DELETE RESTRICT.
   Teste com PostgreSQL verifica rejeição de identidade duplicada, mesmo ID externo
   em provedores diferentes, rejeição de jogo ausente e bloqueio de exclusão do jogo.
-  O hash apenas é armazenado; importação e detecção de mudanças ainda não existem.
+  A gravação da importação e a comparação com hashes persistidos ainda não existem.
+- Validação da fonte sintética aceita provider synthetic/version 1 e até
+  1.000 registros por lote. Registros inválidos e IDs externos duplicados contam
+  como rejeitados; o primeiro registro válido de cada identidade é preservado.
+- Jogos de origem rejeitam campos extras e valores inválidos, aplicam trim aos
+  textos e gêneros e removem gêneros repetidos, ordenando-os. Hashes SHA-256 usam
+  título, descrição e gêneros normalizados, sem a identidade externa.
+- Nove testes unitários novos cobrem normalização e limites dos registros,
+  validação e rejeições dos lotes e hashes estáveis que mudam com o conteúdo.
 - Usuários separados para aplicação e migrações.
 - Fixtures e seed repetível com três jogos sintéticos e dois usuários de demonstração.
 - POST /auth/login com email normalizado, verificação de senha com scrypt,
@@ -217,7 +225,14 @@ Após adicionar GameSource, a quarta migração foi aplicada em desenvolvimento 
 As contagens de desenvolvimento permaneceram em três jogos, dois usuários e nenhuma
 avaliação; GameSource estava vazia. Geração do client, build e lint passaram.
 O novo teste de persistência de GameSource passou separadamente, seguido de lint limpo.
-As suítes completas ainda não foram repetidas após essa alteração do schema.
+As suítes completas ainda não foram repetidas após essa alteração do schema ou os parsers.
+Os nove testes novos de validação/hash passaram em execuções específicas (seis dos
+parsers juntos e três do hash separadamente); build e lint passaram.
+Para executar esses três arquivos juntos:
+
+```bash
+npm test -- src/sync/parse-source-game.spec.ts src/sync/parse-source-batch.spec.ts src/sync/source-game-hash.spec.ts
+```
 O último npm audit registrado reportou zero vulnerabilidades em 27/10/2026;
 é uma verificação pontual das dependências.
 
@@ -247,6 +262,7 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/auth/`: controller de login, validação, hash de senha, opções JWT
   e serviço de autenticação, além dos guards Bearer JWT e administrativo.
 - `src/reviews/`: controller PUT/DELETE autenticado, validação, serviço e módulo.
+- `src/sync/`: validação de registros/lotes e hash do conteúdo normalizado.
 - `src/prisma/`: serviço, módulo e classificador de erros de indisponibilidade.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
@@ -303,7 +319,13 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-Próximas etapas: validação da importação sintética e persistência idempotente,
+A validação do lote limita a quantidade de registros, sem limitar o tamanho do JSON.
+Comprimentos dos textos usam UTF-16: IDs externos têm 1-100 letras ASCII minúsculas,
+dígitos ou hífens, começando por letra ou dígito; títulos 1-200, descrições 1-10.000
+e 1-20 gêneros de 1-50 unidades cada após trim.
+A fixture catalog-v1 é separada do seed; sua validação não realiza importação.
+
+Próximas etapas: persistência transacional e idempotente da importação,
 seguidas de sincronização com Redis/BullMQ, endpoints administrativos e cache.
 Os esquemas completos dos erros permanecem uma pendência de documentação.
 Busca, observabilidade e AWS ficam para depois.

@@ -1,0 +1,24 @@
+{
+  "provider": "synthetic",
+  "version": "1",
+  "games": [
+    {
+      "externalId": "nebula-courier",
+      "title": "Nebula Courier",
+      "description": "Deliver cargo between fictional space stations.",
+      "genres": ["Simulation", "Adventure"]
+    },
+    {
+      "externalId": "clockwork-valley",
+      "title": "Clockwork Valley",
+      "description": "Solve mechanical puzzles in a fictional valley.",
+      "genres": ["Puzzle"]
+    },
+    {
+      "externalId": "pixel-harbor",
+      "title": "Pixel Harbor",
+      "description": "Manage a fictional harbor and its trade routes.",
+      "genres": ["Strategy", "Simulation"]
+    }
+  ]
+}

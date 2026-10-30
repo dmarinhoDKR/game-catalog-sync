@@ -38,7 +38,15 @@ Implemented and verified locally:
   a gameId index, contentHash storage and a foreign key with ON DELETE RESTRICT.
   A PostgreSQL test verifies duplicate identity rejection, the same external ID
   across different providers, missing game rejection and blocked game deletion.
-  The content hash is stored only; import and change detection are not implemented yet.
+  Import persistence and comparison against stored hashes are not implemented yet.
+- Synthetic source validation accepts provider synthetic/version 1 and up to
+  1,000 records per batch. Invalid records and duplicate external IDs are counted
+  as rejected; the first valid record for each identity is retained.
+- Source games reject extra fields and invalid values, trim title/description
+  and genres, and deduplicate and sort genres. SHA-256 hashes cover normalized
+  title, description and genres, excluding external identity.
+- Nine new unit tests cover record normalization and limits, batch validation
+  and rejection counts, and stable hashes that change with content.
 - Separate application and migration database users.
 - A repeatable seed with three synthetic games and two demonstration users.
 - POST /auth/login with normalized email, scrypt password verification,
@@ -216,7 +224,14 @@ After adding GameSource, the fourth migration was applied to development and tes
 databases. Development counts remained three games, two users and zero reviews;
 GameSource was empty. Client generation, build and lint passed.
 The new GameSource persistence test then passed separately, followed by clean lint.
-The full suites have not been rerun after this schema change.
+The full suites have not been rerun after this schema change or the source parsers.
+The nine new source parser/hash unit tests passed in targeted runs (six parser
+tests together and three hash tests separately); build and lint passed.
+To run these three files together:
+
+```bash
+npm test -- src/sync/parse-source-game.spec.ts src/sync/parse-source-batch.spec.ts src/sync/source-game-hash.spec.ts
+```
 The latest recorded npm audit reported zero vulnerabilities on 2026-10-27;
 this is a point-in-time dependency check.
 
@@ -246,6 +261,7 @@ the development secret.
 - `src/auth/`: login controller, validation, password hashing, JWT options
   and authentication service, Bearer JWT guard and administrative guard.
 - `src/reviews/`: authenticated PUT/DELETE controller, input validation, service and module.
+- `src/sync/`: source record/batch validation and normalized content hashing.
 - `src/prisma/`: database service, module and unavailability error classifier.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
@@ -299,7 +315,13 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Next stages: synthetic import validation and idempotent persistence, followed by
+Source batch validation currently limits record count, not JSON file size.
+Record validation uses UTF-16 text lengths: external IDs are 1-100 lowercase ASCII
+letters/digits/hyphens, starting with a letter or digit; titles 1-200, descriptions
+1-10,000, and 1-20 genres of 1-50 code units each after trimming.
+The catalog-v1 test fixture is separate from the seed; validation does not import it.
+
+Next stages: transactional, idempotent import persistence, followed by
 Redis/BullMQ background synchronization, administrative endpoints and caching.
 Complete error response schemas remain a documentation task.
 Search, observability and AWS come later.
