@@ -90,7 +90,7 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- Quinze testes unitários e vinte e três e2e na última regressão completa, com PostgreSQL real em banco isolado
+- 24 testes unitários e 25 e2e na regressão completa de 14/11/2026, com PostgreSQL real em banco isolado
   nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
@@ -105,7 +105,9 @@ CI e deploy cloud ainda não foram implementados.
 
 ## Ambiente local
 
-Verificado no Ubuntu 24.04.4 via WSL, com Node.js 24.16.0 e npm 11.13.0.
+Reconstruído e verificado em 14/11/2026 com Ubuntu 24.04.5 via WSL 2,
+Node.js 24.16.0 e npm 11.13.0. Docker Desktop 4.98.0, Engine 29.9.2 e
+Compose 5.6.1 foram confirmados na preparação do ambiente.
 
 As dependências estão registradas em `package-lock.json`.
 
@@ -121,9 +123,8 @@ A aplicação requer PostgreSQL, DATABASE_URL e JWT_SECRET.
 O Compose disponibiliza o banco de desenvolvimento em 127.0.0.1:5436
 e, pelo perfil test, o banco de testes em 127.0.0.1:5437.
 
-A preparação dos usuários, schema e permissões do banco de desenvolvimento
-ainda é manual. Iniciar somente o Compose não conclui esse setup.
-As instruções completas dessa preparação ainda estão pendentes.
+O provisionamento do banco de desenvolvimento é manual e está descrito abaixo.
+Iniciar somente o Compose não cria as roles da aplicação nem suas permissões.
 
 O banco de testes possui preparação automática, descrita em Verificação.
 
@@ -148,11 +149,141 @@ Variáveis locais usadas:
 Credenciais ficam no .env, ignorado pelo Git.
 Nunca use a mesma URL para o banco principal e o shadow database.
 
-O client gerado também é ignorado pelo Git. Após npm ci, gere-o:
+### Ambiente local novo
+
+Execute os comandos na raiz do projeto pelo Ubuntu/WSL após `npm ci`, com
+Docker Desktop ativo e integração WSL habilitada. Em uma instalação existente,
+preserve o `.env` e o banco; pule os passos de criação já concluídos.
+
+Para um ambiente novo, crie todas as variáveis acima sem exibir segredos. O
+script recusa sobrescrever `.env` e restringe suas permissões ao proprietário.
+As senhas geradas são hexadecimais e dispensam codificação adicional nas URLs.
+O Compose valida a variável administrativa de desenvolvimento mesmo quando
+somente `db-test` é selecionado; configure todas antes de preparar os testes.
+```bash
+node --input-type=module <<'NODE'
+import { randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+const secret = () => randomBytes(32).toString('hex');
+const app = secret();
+const migration = secret();
+const testAdmin = secret();
+const testApp = secret();
+const values = {
+  POSTGRES_ADMIN_PASSWORD: secret(),
+  DATABASE_URL: `postgresql://game_catalog_app:${app}@127.0.0.1:5436/game_catalog?schema=catalog`,
+  MIGRATION_DATABASE_URL: `postgresql://game_catalog_migrator:${migration}@127.0.0.1:5436/game_catalog?schema=catalog`,
+  SHADOW_DATABASE_URL: `postgresql://game_catalog_migrator:${migration}@127.0.0.1:5436/game_catalog_shadow?schema=catalog`,
+  JWT_SECRET: secret(),
+  DEMO_USER_PASSWORD: secret(),
+  DEMO_ADMIN_PASSWORD: secret(),
+  POSTGRES_TEST_ADMIN_PASSWORD: testAdmin,
+  POSTGRES_TEST_APP_PASSWORD: testApp,
+  TEST_DATABASE_URL: `postgresql://game_catalog_test_app:${testApp}@127.0.0.1:5437/game_catalog_test?schema=catalog`,
+  TEST_MIGRATION_DATABASE_URL: `postgresql://postgres:${testAdmin}@127.0.0.1:5437/game_catalog_test?schema=catalog`,
+};
+writeFileSync('.env', Object.entries(values)
+  .map(([key, value]) => `${key}=${value}`).join('\n') + '\n',
+  { flag: 'wx', mode: 0o600 });
+console.log('.env created; secrets not displayed.');
+NODE
+
+git check-ignore .env
+docker compose --profile test config --quiet
+npx --no-install prisma generate --config prisma7.config.ts
+```
+A saída esperada do Git é `.env`; a validação do Compose não deve emitir mensagens.
+Não publique `.env` nem compartilhe `docker compose config` sem `--quiet`,
+pois a configuração expandida pode exibir senhas.
+
+### Banco de desenvolvimento — somente na primeira inicialização
+
+Use um volume novo de desenvolvimento. Não execute o provisionamento contra um
+banco existente nem repita o script após erro sem conferir o estado.
+Roles e schema são criados em uma transação; o shadow é criado separadamente.
+Se a criação do shadow falhar, a transação anterior permanece confirmada.
+Não remova um volume existente para resolver erro de inicialização.
+
+A aplicação recebe uso do schema e permissões DML; `game_catalog_migrator`
+é dono de `catalog` e do banco shadow separado. Nenhuma dessas roles é superuser
+ou pode criar roles ou outros bancos. Os privilégios padrão se aplicam aos
+objetos criados pela role de migrações. O script exige as senhas hexadecimais
+de 64 caracteres geradas acima e envia SQL pela entrada padrão sem exibi-las.
+```bash
+docker compose up -d --wait db
+
+node --input-type=module <<'NODE'
+import 'dotenv/config';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+const app = new URL(process.env.DATABASE_URL);
+const migration = new URL(process.env.MIGRATION_DATABASE_URL);
+const shadow = new URL(process.env.SHADOW_DATABASE_URL);
+for (const url of [app, migration, shadow]) {
+  assert.equal(url.protocol, 'postgresql:');
+  assert.equal(url.hostname, '127.0.0.1');
+  assert.equal(url.port, '5436');
+  assert.equal(url.searchParams.get('schema'), 'catalog');
+}
+assert.equal(app.username, 'game_catalog_app');
+assert.equal(migration.username, 'game_catalog_migrator');
+assert.equal(shadow.username, migration.username);
+assert.equal(app.pathname, '/game_catalog');
+assert.equal(migration.pathname, '/game_catalog');
+assert.equal(shadow.pathname, '/game_catalog_shadow');
+assert.equal(shadow.password, migration.password);
+const appPassword = decodeURIComponent(app.password);
+const migrationPassword = decodeURIComponent(migration.password);
+for (const password of [appPassword, migrationPassword]) {
+  assert.match(password, /^[a-f0-9]{64}$/);
+}
+const sql = `
+DO $$
+BEGIN
+  IF current_database() <> 'game_catalog' THEN
+    RAISE EXCEPTION 'Unexpected development database';
+  END IF;
+END $$;
+BEGIN;
+CREATE ROLE game_catalog_app
+  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+  NOREPLICATION NOBYPASSRLS PASSWORD '${appPassword}';
+CREATE ROLE game_catalog_migrator
+  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+  NOREPLICATION NOBYPASSRLS PASSWORD '${migrationPassword}';
+CREATE SCHEMA catalog AUTHORIZATION game_catalog_migrator;
+GRANT CONNECT ON DATABASE game_catalog
+  TO game_catalog_app, game_catalog_migrator;
+GRANT USAGE ON SCHEMA catalog TO game_catalog_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE game_catalog_migrator IN SCHEMA catalog
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO game_catalog_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE game_catalog_migrator IN SCHEMA catalog
+  GRANT USAGE ON SEQUENCES TO game_catalog_app;
+COMMIT;
+CREATE DATABASE game_catalog_shadow OWNER game_catalog_migrator;
+`;
+const result = spawnSync('docker', [
+  'compose', 'exec', '-T', 'db',
+  'psql', '-X', '-U', 'postgres', '-d', 'game_catalog',
+  '-v', 'ON_ERROR_STOP=1',
+], { input: sql, encoding: 'utf8' });
+if (result.error) throw result.error;
+process.stdout.write(result.stdout ?? '');
+process.stderr.write(result.stderr ?? '');
+if (result.status !== 0) process.exit(result.status ?? 1);
+console.log('Roles, schema, privileges and shadow database prepared.');
+NODE
+```
+Após o provisionamento bem-sucedido, aplique e confira as migrações:
 
 ```bash
-npx --no-install prisma generate
+npx --no-install prisma migrate deploy --config prisma7.config.ts
+npx --no-install prisma migrate status --config prisma7.config.ts
 ```
+
+Esperado: `game_catalog` em `127.0.0.1:5436` e quatro migrações aplicadas.
+O shadow foi criado na reconstrução; seu uso por `prisma migrate dev` ainda
+não foi exercitado. `migrate deploy` não utiliza esse banco.
 
 Após preparar o banco de desenvolvimento e aplicar as quatro migrações,
 configure as senhas de demonstração e execute:
@@ -224,22 +355,26 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A regressão completa de 30/10/2026 aprovou quinze testes unitários e vinte e três
-e2e em treze arquivos e2e, incluindo OpenAPI, além de build e lint.
-Após adicionar GameSource, a quarta migração foi aplicada em desenvolvimento e testes.
-As contagens de desenvolvimento permaneceram em três jogos, dois usuários e nenhuma
-avaliação; GameSource estava vazia. Geração do client, build e lint passaram.
-O novo teste de persistência de GameSource passou separadamente, seguido de lint limpo.
-As suítes completas ainda não foram repetidas após GameSource, os parsers ou o importador.
-Os nove testes novos de validação/hash passaram em execuções específicas (seis dos
-parsers juntos e três do hash separadamente); build e lint passaram.
-Para executar esses três arquivos juntos:
+A regressão completa de 14/11/2026 aprovou **24 testes unitários em 12 arquivos**
+e **25 testes e2e em 15 arquivos**, incluindo GameSource, parsers/hashes,
+importador transacional, OpenAPI e cenários de falha/recuperação do banco.
+Geração do Prisma Client, build e lint passaram; lint sem avisos ou erros.
+As quatro migrações foram aplicadas em bancos novos de teste e desenvolvimento.
+O seed de desenvolvimento verificou três jogos e dois usuários de demonstração.
+Chamadas manuais a /health/live, /health/ready e /games retornaram HTTP 200;
+o catálogo retornou os três jogos do seed e o Swagger abriu corretamente.
+Os resultados são de um ambiente local reconstruído com dados sintéticos novos,
+não de restauração do banco anterior ou de deploy em produção.
+
+A captura acima e as medições de paginação permanecem como evidência histórica.
+Para verificar somente parsers e hash:
 
 ```bash
 npm test -- src/sync/parse-source-game.spec.ts src/sync/parse-source-batch.spec.ts src/sync/source-game-hash.spec.ts
 ```
-O último npm audit registrado reportou zero vulnerabilidades em 27/10/2026;
-é uma verificação pontual das dependências.
+Em 14/11/2026, npm audit reportou zero vulnerabilidades após atualização do
+lockfile sem --force para Nest CLI/schematics 12.0.13 e minimatch 11.0.5.
+É uma verificação pontual de dependências, não uma garantia de segurança geral.
 
 O novo teste de integração da importação passou separadamente após cada cenário;
 o build passou para o serviço e o lint passou após a última alteração do teste.
@@ -319,8 +454,11 @@ de conexão observado como P2039/57P01 em 503. Falha e recuperação da
 autenticação foram testadas no serviço; a resposta HTTP do login durante
 indisponibilidade ainda não foi testada separadamente.
 
-A preparação do banco de desenvolvimento ainda é manual. O setup a partir de um clone novo
-ainda não foi completamente documentado ou verificado.
+O provisionamento de desenvolvimento permanece manual. Clone novo, credenciais,
+roles, migrações, seed, saúde/catálogo e Swagger foram verificados em 14/11/2026.
+As instruções consolidadas acima documentam esse processo; ainda não foram
+reexecutadas literalmente como um único roteiro completo. O login de desenvolvimento
+não foi conferido manualmente na reconstrução; autenticação passou nos e2e isolados.
 O teste de falha e recuperação interrompe e recria somente db-test.
 Ele descarta os dados desse banco e não deve executar simultaneamente
 com outras suítes que dependam da mesma instância.
