@@ -89,7 +89,8 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- 24 unit tests and 25 e2e tests in the full regression on 2026-11-14, with database scenarios using real
+- 31 unit tests and 25 e2e tests verified on 2026-11-18, plus nine MongoDB/PostgreSQL
+  archive integration tests. Database scenarios use real
   PostgreSQL in an isolated test database. Coverage includes pagination,
   User and Review constraints, login HTTP responses, rate limiting, token verification,
   rejection of expired or tampered tokens, database failure/recovery,
@@ -355,7 +356,7 @@ permissions when initializing an empty database, and applies migrations.
 db-test uses tmpfs and loses its data when stopped. Run
 npm run test:db:prepare before testing after each stop.
 
-The full regression on 2026-11-14 passed **24 unit tests in 12 files** and
+Historical reconstruction baseline: the regression on 2026-11-14 passed **24 unit tests in 12 files** and
 **25 e2e tests in 15 files**, including GameSource, source parsers/hashes,
 the transactional importer, OpenAPI and database failure/recovery scenarios.
 Prisma Client generation, build and lint also passed; lint reported no warnings
@@ -469,17 +470,21 @@ A valid UUID does not need to identify an existing game.
 Pagination does not preserve a snapshot between requests; duplicate-free
 navigation was verified with a stable dataset.
 
-Source batch validation currently limits record count, not JSON file size.
+The importer parser limits record count, not input JSON byte size. The source archive
+CLI additionally enforces a 1 MiB limit before storage; see the MongoDB section.
 Record validation uses UTF-16 text lengths: external IDs are 1-100 lowercase ASCII
 letters/digits/hyphens, starting with a letter or digit; titles 1-200, descriptions
 1-10,000, and 1-20 genres of 1-50 code units each after trimming.
 The catalog-v1 test fixture is separate from the seed; validation does not import it.
 
-The importer is currently exercised through service integration tests; it is not
-registered in an application module or exposed over HTTP or through a worker.
+The importer is exercised through service integration tests and the local source
+archive CLI; it is not registered in an application module or exposed over HTTP
+or through a worker.
 Its transaction timeout is 30 seconds, not a throughput guarantee for 1,000 records.
-Concurrent imports, serialization retries, database failure/recovery and rollback
-from a real database error have not been tested. Errors propagate to the caller.
+Concurrent imports, serialization retries and rollback from a real database error
+have not been tested. The archive integration suite verifies source retention during
+a real PostgreSQL outage and successful import after recovery. Importer errors
+propagate to the caller.
 The service does not link existing seed games by title.
 
 Next stages: Redis/BullMQ background synchronization, administrative endpoints and caching.
@@ -488,6 +493,42 @@ Search, observability and AWS come later.
 
 ## AI assistance
 
-I implemented the project manually with guidance and code review
-suggestions from Codex. I reviewed the code and ran the checks described
-in this README. AI review is not an independent team review.
+I implemented the original API manually with guidance and review suggestions from
+Codex. I developed the MongoDB archive with Codex assistance: Codex generated the
+implementation under my direction and ran its automated checks. I performed the
+manual demonstration and reviewed the
+implementation as the project author. The MongoDB section records the evidence
+and scope. My review is not an independent third-party review.
+
+## MongoDB source document archive
+
+A local CLI archives synthetic **whole batches** with provider, first receipt date,
+format version and SHA-256. MongoDB stores the source; PostgreSQL retains normalized
+catalog/auth/review data. Unique content indexes prevent duplicate archival; period
+queries use stable cursor pagination. Existing documents can be retrieved and replayed
+through CatalogImportService without adding HTTP administrative endpoints.
+
+[Setup, variables, commands, indexes, decisions, error semantics and isolated tests](docs/source-documents.md).
+Use `npm run test:documents` for the real MongoDB/PostgreSQL tests. MongoDB is optional
+for the HTTP API. No distributed transaction, queue, exactly-once guarantee or production
+deployment is introduced. JSONB would reduce operational cost; MongoDB is a deliberate
+document-modeling learning exercise. Only synthetic catalog fields are accepted;
+never submit provider credentials, tokens or personal data.
+
+Verified on **2026-11-18**: build/lint, **31 unit tests**, **25 existing e2e tests**
+and **9 new real MongoDB/PostgreSQL integration tests** passed. The new tests include
+rollback without orphan games and source retention across PostgreSQL outage/recovery.
+`npm audit` reported zero vulnerabilities at that point. Development Mongo was
+prepared and the CLI was exercised manually, as detailed below.
+No existing development data were migrated; the demonstration imported synthetic data.
+I developed this feature with Codex assistance, including code generation under my
+direction, and confirmed completion of my human review on 2026-11-18. My review is not an independent third-party review.
+[AI decision record](docs/ai-assistance.md).
+
+Manual demonstration on **2026-11-18**: the CLI stored the synthetic fixture,
+recognized repeated storage with the same ID/hash, retrieved the complete payload,
+and listed metadata by provider/date range. The first replay returned
+`created: 3`; the second returned `unchanged: 3`, with no creations or updates.
+A read-only SQL query confirmed three `synthetic` GameSource records linked to
+three games, with their normalized content hashes. This verifies sequential replay
+for this fixture, not concurrent import safety or cross-database atomicity.

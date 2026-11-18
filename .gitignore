@@ -8,3 +8,5 @@ coverage/
 .env.*
 !.env.example
 /src/generated/prisma/
+
+.documents-test.lock

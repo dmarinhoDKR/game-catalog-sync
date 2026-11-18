@@ -1,0 +1,27 @@
+name: game-catalog-sources
+services:
+  mongo-test:
+    image: mongo:8.0.16
+    profiles: [test]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: source_test_root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_TEST_ROOT_PASSWORD:?Use npm run test:documents}
+      MONGO_ARCHIVE_DATABASE: game_catalog_sources_test
+      MONGO_ARCHIVE_USERNAME: source_archive_test_app
+      MONGO_ARCHIVE_PASSWORD: ${MONGO_TEST_APP_PASSWORD:?Use npm run test:documents}
+    ports: ['127.0.0.1:27019:27017']
+    tmpfs: [/data/db, /data/configdb]
+    volumes:
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/01-archive.js:ro
+    healthcheck:
+      test:
+        [
+          CMD,
+          mongosh,
+          --quiet,
+          --eval,
+          'quit(db.adminCommand({ping:1}).ok ? 0 : 1)',
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 30

@@ -90,7 +90,8 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- 24 testes unitários e 25 e2e na regressão completa de 14/11/2026, com PostgreSQL real em banco isolado
+- 31 testes unitários e 25 e2e verificados em 18/11/2026, além de nove testes de
+  integração do arquivo documental com MongoDB/PostgreSQL reais. PostgreSQL isolado
   nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
   expirados ou adulterados, falha/recuperação do banco e fechamento
@@ -355,7 +356,7 @@ e permissões na inicialização de um banco vazio e aplica as migrações.
 db-test usa tmpfs e perde seus dados ao parar. Execute novamente
 npm run test:db:prepare antes dos testes após cada parada.
 
-A regressão completa de 14/11/2026 aprovou **24 testes unitários em 12 arquivos**
+Marco histórico da reconstrução: a regressão de 14/11/2026 aprovou **24 testes unitários em 12 arquivos**
 e **25 testes e2e em 15 arquivos**, incluindo GameSource, parsers/hashes,
 importador transacional, OpenAPI e cenários de falha/recuperação do banco.
 Geração do Prisma Client, build e lint passaram; lint sem avisos ou erros.
@@ -472,17 +473,22 @@ Um UUID válido não precisa corresponder a um jogo existente.
 A paginação não mantém um snapshot entre requisições; a ausência
 de repetição foi verificada em dataset estável.
 
-A validação do lote limita a quantidade de registros, sem limitar o tamanho do JSON.
+O parser do importador limita a quantidade de registros, sem limitar os bytes do JSON.
+A CLI do arquivo documental acrescenta o limite de 1 MiB antes do armazenamento;
+veja a seção MongoDB.
 Comprimentos dos textos usam UTF-16: IDs externos têm 1-100 letras ASCII minúsculas,
 dígitos ou hífens, começando por letra ou dígito; títulos 1-200, descrições 1-10.000
 e 1-20 gêneros de 1-50 unidades cada após trim.
 A fixture catalog-v1 é separada do seed; sua validação não realiza importação.
 
-O importador é exercitado por testes de integração do serviço; ainda não está
-registrado em módulo da aplicação nem exposto por HTTP ou worker.
+O importador é exercitado por testes de integração e pela CLI local do arquivo
+documental; ainda não está registrado em módulo da aplicação nem exposto por HTTP
+ou worker.
 O timeout da transação é de 30 segundos, sem garantia de vazão para 1.000 registros.
-Importações concorrentes, retries de serialização, falha/recuperação do banco
-e rollback por erro real do banco ainda não foram testados. Erros são propagados.
+Importações concorrentes, retries de serialização e rollback por erro real do banco
+ainda não foram testados. A suíte do arquivo documental verifica retenção da origem
+durante indisponibilidade real do PostgreSQL e importação após recuperação.
+Erros do importador são propagados.
 O serviço não associa jogos existentes do seed pela igualdade do título.
 
 Próximas etapas: sincronização com Redis/BullMQ, endpoints administrativos e cache.
@@ -491,6 +497,45 @@ Busca, observabilidade e AWS ficam para depois.
 
 ## Assistência de IA
 
-Implementei o projeto manualmente com orientação e sugestões de revisão
-do Codex. Revisei o código e executei as verificações descritas neste
-README. A revisão por IA não equivale a uma revisão independente.
+Implementei a API original manualmente, com orientação e sugestões de revisão do
+Codex. Desenvolvi o arquivo MongoDB com assistência do Codex, que gerou a
+implementação sob minha orientação e executou suas verificações automatizadas.
+Realizei a demonstração manual e revisei a
+implementação como autor do projeto. A seção MongoDB detalha as evidências e o
+escopo. Minha revisão não constitui revisão independente por terceiro.
+
+## Arquivo documental de fontes com MongoDB
+
+Uma CLI local arquiva **lotes completos** sintéticos com provedor, data do primeiro
+recebimento, versão e SHA-256. MongoDB guarda a origem; PostgreSQL mantém os jogos
+normalizados, usuários e avaliações. Índice único impede arquivamento duplicado;
+consultas por período usam paginação estável por cursor. Documentos podem ser
+recuperados e reprocessados pelo CatalogImportService, sem novos endpoints administrativos.
+
+[Preparação, variáveis, comandos, índices, decisões, falhas e testes isolados (em inglês)](docs/source-documents.md).
+Execute `npm run test:documents` para os testes com MongoDB e PostgreSQL reais.
+MongoDB é opcional para a API HTTP. Não há transação distribuída, fila, garantia de
+exactly-once ou deploy de produção. JSONB reduziria o custo operacional; MongoDB foi
+escolhido para aprender modelagem documental. Aceitam-se somente campos sintéticos de
+catálogo; não forneça credenciais, tokens ou dados pessoais dos provedores.
+
+Verificado em **18/11/2026**: build/lint, **31 testes unitários**, **25 e2e existentes**
+e **9 testes novos de integração com MongoDB/PostgreSQL reais** aprovados. Os novos
+cenários incluem rollback sem jogos órfãos e retenção da origem durante falha e
+recuperação do PostgreSQL. `npm audit` reportou zero vulnerabilidades naquele momento.
+Mongo de desenvolvimento foi preparado e a CLI foi exercitada manualmente, conforme
+descrito abaixo. Não houve migração de dados existentes; a demonstração importou
+dados sintéticos. Desenvolvi esta funcionalidade com assistência do Codex, incluindo
+geração de código sob minha orientação, e confirmei minha revisão humana como
+realizada em 18/11/2026. Minha revisão não constitui
+revisão independente por terceiro.
+[Registro de assistência de IA](docs/ai-assistance.md).
+
+Demonstração manual em **18/11/2026**: a CLI armazenou a fixture sintética,
+reconheceu sua repetição com o mesmo ID/hash, recuperou o payload completo e listou
+metadados por provedor/período. O primeiro reprocessamento retornou
+`created: 3`; o segundo retornou `unchanged: 3`, sem criações ou atualizações.
+Uma consulta SQL somente de leitura confirmou três GameSource `synthetic`
+vinculadas a três jogos, com seus hashes de conteúdo normalizado. Isso verifica
+reprocessamento sequencial dessa fixture, sem comprovar segurança de importações
+concorrentes ou atomicidade entre os bancos.
