@@ -1,4 +1,4 @@
-name: game-catalog-sources
+name: game-catalog-sources-test
 services:
   mongo-test:
     image: mongo:8.0.16

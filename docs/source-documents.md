@@ -91,11 +91,10 @@ npm run build
 
 The separate Compose project `game-catalog-sources` binds Mongo only to
 `127.0.0.1:27018`, uses authentication and a persistent `source_documents` volume.
-Both Mongo Compose files currently use the project name `game-catalog-sources`:
-a development `up` can report the stopped test container as an orphan. This warning
-was observed during the manual demonstration. Do not use `--remove-orphans` or
-`down -v` to resolve it; the services use distinct ports and storage. Separating
-the Compose project names is a possible follow-up, not part of this documentation edit.
+Development uses the Compose project `game-catalog-sources`; tests use
+`game-catalog-sources-test`. Each project has its own network and container
+names. Development retains its existing persistent volume; MongoDB tests
+continue to use disposable tmpfs storage.
 
 Initialization creates an application `readWrite` user scoped to `game_catalog_sources`,
 not an administrator. Initialization runs only on a new volume. Runtime URI validation
@@ -184,7 +183,8 @@ The runner validates both PostgreSQL URLs before invoking Docker or migrations:
 user `postgres`, schema `catalog`. It only prepares/stops/recreates `db-test`.
 Never run this suite concurrently with other PostgreSQL e2e suites.
 
-`compose.sources-test.yaml` starts only `mongo-test` on `127.0.0.1:27019`, database
+`compose.sources-test.yaml` uses project `game-catalog-sources-test` and starts
+only `mongo-test` on `127.0.0.1:27019`, database
 `game_catalog_sources_test`, with tmpfs and fresh random credentials per run.
 `TEST_MONGODB_URI`, `MONGO_TEST_ROOT_PASSWORD` and `MONGO_TEST_APP_PASSWORD` are
 injected by the runner, not copied from development. The driver validates that exact
