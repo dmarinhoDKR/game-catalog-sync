@@ -90,7 +90,8 @@ Implementado e verificado localmente:
 - Indisponibilidade do banco no catálogo: Prisma P1001 retorna 503.
 - GET /health/live e GET /health/ready, com falha e recuperação
   verificadas manualmente.
-- 31 testes unitários e 25 e2e verificados em 18/11/2026, além de nove testes de
+- 41 testes unitários verificados em 20/11/2026. A suíte completa de 25 e2e passou
+  em 18/11/2026, assim como os nove testes de
   integração do arquivo documental com MongoDB/PostgreSQL reais. PostgreSQL isolado
   nos cenários de banco. Cobrem paginação, constraints de User e Review, respostas HTTP
   do login, limite de requisições, verificação de token, rejeição de tokens
@@ -101,8 +102,9 @@ Implementado e verificado localmente:
   uma avaliação e um par completo de nota/texto de uma das entradas. Testes
   unitários separados simulam P2002/P2003 e verificam conflitos 409 sanitizados.
 
-Endpoints administrativos, Redis, sincronização em background,
-CI e deploy cloud ainda não foram implementados.
+Um primeiro marco local do worker Redis/BullMQ está implementado e demonstrado abaixo.
+Endpoints administrativos de sincronização, cache, CI e deploy cloud seguem pendentes.
+Os critérios completos de sincronização em background ainda não foram atendidos.
 
 ## Ambiente local
 
@@ -413,7 +415,9 @@ temporário em vez de usar o segredo de desenvolvimento.
 - `src/auth/`: controller de login, validação, hash de senha, opções JWT
   e serviço de autenticação, além dos guards Bearer JWT e administrativo.
 - `src/reviews/`: controller PUT/DELETE autenticado, validação, serviço e módulo.
-- `src/sync/`: validação, hash do conteúdo normalizado e serviço de importação transacional.
+- `src/sync/`: validação/hash, importador transacional, SyncModule, contrato e
+  encaminhamento de jobs, opções Redis e ponto de entrada do worker separado.
+- `config/redis-queue.conf` e `compose.queue.yaml`: Redis local autenticado da fila.
 - `src/prisma/`: serviço, módulo e classificador de erros de indisponibilidade.
 - `src/app.module.ts`: módulo raiz.
 - `src/main.ts`: ponto de entrada da aplicação.
@@ -465,7 +469,8 @@ Ele descarta os dados desse banco e não deve executar simultaneamente
 com outras suítes que dependam da mesma instância.
 
 O encerramento explícito por app.close() foi verificado.
-O encerramento por sinais do sistema, como Ctrl+C, ainda não foi validado.
+O encerramento da API por sinais do sistema ainda não foi validado. A parada do
+worker ocioso por Ctrl+C foi observada separadamente no marco abaixo.
 Os arquivos e2e são executados sem paralelismo entre si.
 
 O cursor é um UUID usado como limite exclusivo: id > cursor.
@@ -481,9 +486,9 @@ dígitos ou hífens, começando por letra ou dígito; títulos 1-200, descriçõ
 e 1-20 gêneros de 1-50 unidades cada após trim.
 A fixture catalog-v1 é separada do seed; sua validação não realiza importação.
 
-O importador é exercitado por testes de integração e pela CLI local do arquivo
-documental; ainda não está registrado em módulo da aplicação nem exposto por HTTP
-ou worker.
+O importador é registrado/exportado por SyncModule e usado pelos testes de integração,
+pela CLI documental e pelo worker separado. O AppModule HTTP permanece inalterado;
+não há endpoint administrativo de importação exposto.
 O timeout da transação é de 30 segundos, sem garantia de vazão para 1.000 registros.
 Importações concorrentes, retries de serialização e rollback por erro real do banco
 ainda não foram testados. A suíte do arquivo documental verifica retenção da origem
@@ -491,7 +496,9 @@ durante indisponibilidade real do PostgreSQL e importação após recuperação.
 Erros do importador são propagados.
 O serviço não associa jogos existentes do seed pela igualdade do título.
 
-Próximas etapas: sincronização com Redis/BullMQ, endpoints administrativos e cache.
+Próximas etapas: testes Redis isolados, falha/recuperação, política de retries, exclusão
+mútua global e reconciliação de execuções abandonadas; depois endpoints administrativos
+e cache.
 Os esquemas completos dos erros permanecem uma pendência de documentação.
 Busca, observabilidade e AWS ficam para depois.
 
@@ -514,7 +521,8 @@ recuperados e reprocessados pelo CatalogImportService, sem novos endpoints admin
 
 [Preparação, variáveis, comandos, índices, decisões, falhas e testes isolados (em inglês)](docs/source-documents.md).
 Execute `npm run test:documents` para os testes com MongoDB e PostgreSQL reais.
-MongoDB é opcional para a API HTTP. Não há transação distribuída, fila, garantia de
+MongoDB é opcional para a API HTTP. O arquivo documental sozinho não introduz fila;
+o worker opcional está descrito abaixo. Não há transação distribuída, garantia de
 exactly-once ou deploy de produção. JSONB reduziria o custo operacional; MongoDB foi
 escolhido para aprender modelagem documental. Aceitam-se somente campos sintéticos de
 catálogo; não forneça credenciais, tokens ou dados pessoais dos provedores.
@@ -539,3 +547,105 @@ Uma consulta SQL somente de leitura confirmou três GameSource `synthetic`
 vinculadas a três jogos, com seus hashes de conteúdo normalizado. Isso verifica
 reprocessamento sequencial dessa fixture, sem comprovar segurança de importações
 concorrentes ou atomicidade entre os bancos.
+
+## Processamento em background — primeiro marco do worker
+
+Implementei este marco manualmente, com orientação do Codex em pequenas etapas.
+Em **20/11/2026**, demonstrei o fluxo local real:
+Redis/BullMQ → worker separado → documento MongoDB → importador PostgreSQL.
+A fila `catalog-import` usa o prefixo `catalog-sync`; um job `reprocess-source`
+contém somente `{ documentId }`, validado antes de consultar o arquivo documental.
+Não copiamos o lote nem credenciais para o job. MongoDB é necessário nesse fluxo
+do worker, mas continua opcional para a API HTTP existente.
+
+O job `1` terminou com `created: 0`, `updated: 0`, `unchanged: 3`, `rejected: 0`
+para a fixture sintética já importada. Consultei no Redis o estado completed e o
+resultado do job. Ctrl+C encerrou o worker ocioso e devolveu o terminal ao prompt.
+Parada durante importação ativa ainda não foi verificada; o fechamento individual
+das conexões também não foi observado de forma independente.
+
+### Redis e worker locais
+
+O Redis da fila é separado do futuro cache e dos projetos Compose PostgreSQL/MongoDB.
+`compose.queue.yaml` fixa Redis 7.4.12, publica somente em `127.0.0.1:6380` e monta
+`config/redis-queue.conf`, volume persistente em `/data` e ACL somente de leitura.
+A configuração habilita AOF com `appendfsync everysec`, limite de memória Redis de
+256 MiB e `noeviction`. Uma falha pode perder aproximadamente o último segundo de
+gravações; o limite Redis não representa um limite total de RAM do container.
+Ao atingir o limite, gravações podem falhar em vez de descartar chaves da fila.
+
+Pré-requisitos locais (não versionar nem compartilhar seus valores):
+
+- `REDIS_QUEUE_URL` no `.env` existente:
+  `redis://catalog_queue:<senha-hexadecimal-minuscula-de-64-caracteres>@127.0.0.1:6380/0`.
+- `.secrets/redis-queue.acl`, ignorado pelo Git, contendo o hash SHA-256 da senha,
+  com usuário padrão desativado e acesso restrito a chaves e canais `catalog-sync:*`.
+  A ACL preparada nega categorias de comandos administrativos/perigosos e libera
+  explicitamente INFO e comandos de nome/metadados do cliente necessários neste fluxo.
+- Diretório preparado com modo 0700 e ACL com 0444 para leitura no container;
+  o diretório pai restringe o acesso ao conteúdo no host.
+- Configuração e variáveis existentes de PostgreSQL/MongoDB de desenvolvimento.
+
+Credenciais e ACL foram preparadas manualmente; ainda não existe comando automatizado
+de bootstrap da fila. Não inicie com ACL ausente nem regenere credenciais sobre uma
+configuração existente sem conferir o estado. O serviço Compose ainda não tem
+healthcheck; estar em execução não comprova prontidão. Verifiquei rejeição sem
+autenticação, PING autenticado, isolamento do prefixo, bloqueio administrativo e
+operações BullMQ sintéticas de fila e worker.
+
+Com os pré-requisitos preparados:
+
+```bash
+docker compose -f compose.queue.yaml config --quiet
+docker compose -f compose.queue.yaml up -d
+docker compose up -d --wait db
+docker compose -f compose.sources.yaml --profile sources up -d --wait mongo
+npm run build
+node dist/sync/worker-main.js
+```
+
+Iniciar o worker pode consumir jobs pendentes da fila de desenvolvimento e gravar
+no PostgreSQL de desenvolvimento. O processo restringe destinos ao ambiente local
+e recusa `NODE_ENV=production`. Ele cria um contexto Nest com SyncModule, sem iniciar
+a API HTTP. O produtor da demonstração foi um script no terminal, não uma CLI de
+envio versionada ou endpoint HTTP. Ele usou uma tentativa e retenção de até 100 jobs
+concluídos/falhos; são opções do envio demonstrado, não padrões globais impostos à fila.
+
+Produtor e worker usam instâncias ioredis separadas. O produtor desativa fila offline
+e reenvio automático de comandos sem resposta, com timeout de comando; o worker
+permite reconexão e não tem timeout geral de comandos que afetaria operações
+bloqueantes. Um timeout do produtor ainda pode deixar o resultado do envio
+indeterminado. Falha/reconexão real dessas opções ainda não foi verificada.
+
+Encerre o worker com Ctrl+C antes de parar suas dependências. O Redis pode ser
+parado sem apagar o volume persistente:
+
+```bash
+docker compose -f compose.queue.yaml stop redis-queue
+```
+
+### Verificações e correção de dependência
+
+Executei **41 testes unitários em 16 arquivos**, build e lint com sucesso em
+20/11/2026; lint sem avisos ou erros. O teste de integração PostgreSQL do importador
+também passou usando SyncModule. Os dez novos unitários cobrem opções Redis (quatro),
+contrato do job (três) e encaminhamento/propagação de falhas (três). Os testes de
+encaminhamento usam mocks e não substituem integração real entre fila e bancos.
+A regressão de 25 e2e e os nove testes de integração documental permanecem como
+evidência anterior; essas suítes completas não foram repetidas neste marco.
+
+Prisma 7.10.0 fixa uma dependência Effect vulnerável. Acrescentei override restrito
+a `@prisma/config@7.10.0` para `effect: 3.22.1`, preservando os overrides existentes
+e a versão Prisma. Geração do client, preparação de migrações no banco de testes,
+build, lint, unitários e integração do importador passaram com a substituição.
+Ela troca uma dependência fixada pelo fornecedor e deve ser reavaliada quando o
+Prisma oferecer versão corrigida compatível. `npm audit` reportou zero vulnerabilidades
+nesse momento; é uma verificação pontual de dependências, não garantia de segurança geral.
+
+Este marco não conclui a sincronização planejada. Faltam testes automatizados com
+Redis isolado, falhas/reconexão, classificação de erros transitórios/permanentes,
+política de retries/backoff, exclusão mútua global e registro/reconciliação de execuções.
+`concurrency: 1` limita somente cada worker. Não há garantia de exactly-once ou
+atomicidade entre bancos. Reprocessar lote antigo pode sobrescrever conteúdo mais
+novo. Endpoints administrativos HTTP, cache, carga e deploy de produção permanecem
+fora deste marco verificado.

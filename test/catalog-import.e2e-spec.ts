@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { PrismaModule } from '../src/prisma/prisma.module.js';
+import { SyncModule } from '../src/sync/sync.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { CatalogImportService } from '../src/sync/catalog-import.service.js';
 import { parseSourceBatch } from '../src/sync/parse-source-batch.js';
@@ -36,8 +36,7 @@ it('importa, repete sem alterações e atualiza sem duplicar jogos', async () =>
   };
 
   const moduleFixture = await Test.createTestingModule({
-    imports: [PrismaModule],
-    providers: [CatalogImportService],
+    imports: [SyncModule],
   }).compile();
 
   const app = moduleFixture.createNestApplication();

@@ -89,7 +89,8 @@ Implemented and verified locally:
 - Catalog database unavailability: Prisma P1001 returns HTTP 503.
 - GET /health/live and GET /health/ready, with failure and recovery
   verified manually.
-- 31 unit tests and 25 e2e tests verified on 2026-11-18, plus nine MongoDB/PostgreSQL
+- 41 unit tests verified on 2026-11-20. The full 25-test e2e suite passed on
+  2026-11-18, along with nine MongoDB/PostgreSQL
   archive integration tests. Database scenarios use real
   PostgreSQL in an isolated test database. Coverage includes pagination,
   User and Review constraints, login HTTP responses, rate limiting, token verification,
@@ -100,8 +101,9 @@ Implemented and verified locally:
   one review and a complete rating/body pair from one input. Separate unit tests
   simulate P2002/P2003 and verify sanitized 409 conflicts.
 
-Administrative endpoints, Redis, background synchronization,
-CI and cloud deployment are not implemented yet.
+A first local Redis/BullMQ worker milestone is implemented and demonstrated below.
+Administrative sync endpoints, caching, CI and cloud deployment remain unimplemented.
+The complete background synchronization acceptance criteria are not yet met.
 
 ## Local environment
 
@@ -413,7 +415,9 @@ the development secret.
 - `src/auth/`: login controller, validation, password hashing, JWT options
   and authentication service, Bearer JWT guard and administrative guard.
 - `src/reviews/`: authenticated PUT/DELETE controller, input validation, service and module.
-- `src/sync/`: source validation, normalized content hashing and transactional import service.
+- `src/sync/`: source validation/hashing, transactional importer, SyncModule, job
+  validation/dispatch, Redis connection options and standalone worker entry point.
+- `config/redis-queue.conf` and `compose.queue.yaml`: local authenticated queue Redis.
 - `src/prisma/`: database service, module and unavailability error classifier.
 - `src/app.module.ts`: root application module.
 - `src/main.ts`: application entry point.
@@ -462,7 +466,8 @@ It discards that database's data and must not run concurrently
 with other suites sharing the same instance.
 
 Explicit shutdown through app.close() has been verified.
-Shutdown through system signals, such as Ctrl+C, has not been validated.
+API shutdown through system signals has not been validated. Idle worker shutdown
+via Ctrl+C was observed separately in the milestone below.
 E2E files run without parallel execution.
 
 The cursor is a UUID used as an exclusive boundary: id > cursor.
@@ -477,9 +482,9 @@ letters/digits/hyphens, starting with a letter or digit; titles 1-200, descripti
 1-10,000, and 1-20 genres of 1-50 code units each after trimming.
 The catalog-v1 test fixture is separate from the seed; validation does not import it.
 
-The importer is exercised through service integration tests and the local source
-archive CLI; it is not registered in an application module or exposed over HTTP
-or through a worker.
+The importer is provided/exported by SyncModule and used by service integration
+tests, the source archive CLI and the standalone worker. The HTTP AppModule remains
+unchanged; no administrative import endpoint is exposed.
 Its transaction timeout is 30 seconds, not a throughput guarantee for 1,000 records.
 Concurrent imports, serialization retries and rollback from a real database error
 have not been tested. The archive integration suite verifies source retention during
@@ -487,7 +492,9 @@ a real PostgreSQL outage and successful import after recovery. Importer errors
 propagate to the caller.
 The service does not link existing seed games by title.
 
-Next stages: Redis/BullMQ background synchronization, administrative endpoints and caching.
+Next stages: isolated Redis integration tests, failure/recovery, retry policy, global
+import exclusion and abandoned-run reconciliation; then administrative endpoints
+and caching.
 Complete error response schemas remain a documentation task.
 Search, observability and AWS come later.
 
@@ -510,7 +517,8 @@ through CatalogImportService without adding HTTP administrative endpoints.
 
 [Setup, variables, commands, indexes, decisions, error semantics and isolated tests](docs/source-documents.md).
 Use `npm run test:documents` for the real MongoDB/PostgreSQL tests. MongoDB is optional
-for the HTTP API. No distributed transaction, queue, exactly-once guarantee or production
+for the HTTP API. The archive alone introduces no queue; the optional worker is
+described below. No distributed transaction, exactly-once guarantee or production
 deployment is introduced. JSONB would reduce operational cost; MongoDB is a deliberate
 document-modeling learning exercise. Only synthetic catalog fields are accepted;
 never submit provider credentials, tokens or personal data.
@@ -532,3 +540,106 @@ and listed metadata by provider/date range. The first replay returned
 A read-only SQL query confirmed three `synthetic` GameSource records linked to
 three games, with their normalized content hashes. This verifies sequential replay
 for this fixture, not concurrent import safety or cross-database atomicity.
+
+## Background processing — first worker milestone
+
+I implemented this milestone manually with step-by-step guidance from Codex.
+On **2026-11-20**, I demonstrated the real local flow:
+Redis/BullMQ → standalone worker → archived MongoDB document → PostgreSQL importer.
+The `catalog-import` queue uses prefix `catalog-sync`; a `reprocess-source` job
+contains only `{ documentId }`, validated before archive access. No source payload
+or credentials are copied into the job. MongoDB is required for this worker flow,
+but remains optional for the existing HTTP API.
+
+Job `1` completed with `created: 0`, `updated: 0`, `unchanged: 3`, `rejected: 0`
+for the previously imported synthetic fixture. I retrieved the completed job and
+its result from Redis. Ctrl+C stopped the idle worker and returned the terminal
+prompt. Shutdown with an active import has not been verified, nor have individual
+connection closures been independently observed.
+
+### Local Redis and worker
+
+Queue Redis is separate from the future cache and from the PostgreSQL/Mongo Compose
+projects. `compose.queue.yaml` pins Redis 7.4.12, publishes only `127.0.0.1:6380`
+and mounts `config/redis-queue.conf`, a persistent `/data` volume and a read-only ACL.
+The configuration enables AOF with `appendfsync everysec`, a 256 MiB Redis memory
+limit and `noeviction`. A crash can lose roughly the latest second of writes;
+the Redis memory setting is not a total container RAM limit. At the limit, writes
+may fail instead of evicting queue keys.
+
+Local prerequisites (never commit or share their values):
+
+- `REDIS_QUEUE_URL` in the existing `.env`:
+  `redis://catalog_queue:<64-lowercase-hex-password>@127.0.0.1:6380/0`.
+- `.secrets/redis-queue.acl`, ignored by Git, containing the SHA-256 password hash,
+  with the default user disabled and access restricted to `catalog-sync:*` keys
+  and channels. The prepared ACL denies administrative/dangerous command categories
+  and explicitly permits INFO and client naming/metadata commands needed here.
+- The manually prepared directory is mode 0700 and the ACL file 0444 for container
+  readability; its contents are protected on the host by the parent directory.
+- Existing development PostgreSQL/MongoDB variables and setup described above.
+
+Credential/ACL creation has been performed manually; there is not yet an automated
+bootstrap command for this queue setup. Do not start it with a missing ACL file or
+regenerate credentials over an existing configuration without checking its state.
+The Compose service does not yet have a healthcheck; running status alone is not
+readiness. I verified unauthenticated rejection, authenticated PING, prefix isolation,
+administrative command denial and synthetic BullMQ queue/worker operations.
+
+With those prerequisites prepared:
+
+```bash
+docker compose -f compose.queue.yaml config --quiet
+docker compose -f compose.queue.yaml up -d
+docker compose up -d --wait db
+docker compose -f compose.sources.yaml --profile sources up -d --wait mongo
+npm run build
+node dist/sync/worker-main.js
+```
+
+Starting the worker can consume pending jobs from the development queue and write
+to development PostgreSQL. It is intentionally restricted to local development
+connections and refuses `NODE_ENV=production`. It starts a Nest application context
+using SyncModule, without starting the HTTP API. The producer demonstration used a
+terminal script, not a checked-in enqueue command or HTTP endpoint. It set one
+attempt and retained up to 100 completed/failed jobs; these are demonstration
+submission options, not enforced global queue defaults.
+
+Producer and worker use separate ioredis instances. The producer disables the offline
+queue and automatic resend of unfulfilled commands, with a command timeout; the worker
+allows reconnection and has no general command timeout for blocking operations.
+A producer timeout can still leave the enqueue outcome unknown. Runtime outage and
+reconnection behavior of these settings has not yet been verified.
+
+Stop the worker with Ctrl+C before stopping its dependencies. Queue Redis can be
+stopped without deleting its persistent volume:
+
+```bash
+docker compose -f compose.queue.yaml stop redis-queue
+```
+
+### Verification and dependency correction
+
+I ran **41 unit tests in 16 files**, build and lint successfully on 2026-11-20;
+lint reported zero warnings/errors. The importer PostgreSQL integration test also
+passed through SyncModule. The ten new unit tests cover Redis options (four), job
+validation (three) and dispatch/error propagation (three). Dispatch tests use mocks;
+they do not replace real queue/database integration tests. The 25-test e2e regression
+and nine archive integration tests remain earlier evidence, not a full rerun of
+those suites for this milestone.
+
+Prisma 7.10.0 pins a vulnerable Effect dependency. I added an override scoped to
+`@prisma/config@7.10.0` for `effect: 3.22.1`, preserving the existing overrides and
+Prisma version. Client generation, test database migration preparation, build, lint,
+unit tests and the importer integration test passed with the replacement. This
+replaces the upstream-pinned dependency and should be revisited when Prisma supplies
+a compatible corrected version. `npm audit` reported zero vulnerabilities at this
+point; that is a point-in-time dependency check, not an overall security guarantee.
+
+This is not the completed background synchronization feature. Pending work includes
+automated tests against isolated Redis, failure/reconnection scenarios, transient vs
+permanent error classification, retry/backoff policy, global exclusion and persistent
+run tracking/reconciliation. `concurrency: 1` limits only one worker instance.
+There is no exactly-once or cross-database atomicity guarantee. Replaying an older
+archived batch can overwrite newer content. HTTP administrative endpoints, cache,
+load testing and production deployment are outside this verified milestone.

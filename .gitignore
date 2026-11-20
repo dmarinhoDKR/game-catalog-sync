@@ -10,3 +10,6 @@ coverage/
 /src/generated/prisma/
 
 .documents-test.lock
+
+# Local credentials and access-control files
+.secrets/

@@ -1,0 +1,20 @@
+name: game-catalog-queue
+
+services:
+  redis-queue:
+    image: redis:7.4.12-alpine3.22
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_queue_data:/data
+      - ./config/redis-queue.conf:/usr/local/etc/redis/redis.conf:ro
+    secrets:
+      - redis_queue_acl
+
+secrets:
+  redis_queue_acl:
+    file: ./.secrets/redis-queue.acl
+
+volumes:
+  redis_queue_data:
